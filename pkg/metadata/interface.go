@@ -30,9 +30,22 @@ type VolumeInfo struct {
 	BackupNodes []string
 }
 
+type NodeInfo struct {
+	NodeID  string
+	Address string
+}
+
 // MetadataStore is the interface for metadata operations
 // This should be implemented using external consensus systems like etcd, ZooKeeper, etc.
 type MetadataStore interface {
+	// Node operations
+
+	// RegisterNode registers a new node in the metadata store
+	RegisterNode(ctx context.Context, info NodeInfo) error
+
+	// UnregisterNode removes a node from the metadata store
+	UnregisterNode(ctx context.Context, nodeID string) error
+
 	// Shard operations
 
 	// GenerateShardID generates a globally unique, incrementing shard ID

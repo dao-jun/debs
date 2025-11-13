@@ -55,7 +55,10 @@ func main() {
 	// Initialize metadata store
 	// NOTE: This is a placeholder - actual implementation depends on the chosen metadata store
 	var metadataStore metadata.MetadataStore
-	metadataStore = NewMockMetadataStore() // For development/testing
+	mockStore := NewMockMetadataStore() // For development/testing
+
+	// Wrap the metadata store with retry logic to handle transient failures
+	metadataStore = metadata.NewRetryWrapper(mockStore, metadata.DefaultRetryConfig())
 
 	// Initialize volume manager
 	volumeManager := volume.NewVolumeManager(
@@ -69,6 +72,7 @@ func main() {
 	shardManager := shard.NewShardManager(volumeManager, metadataStore)
 
 	// Load all shards from mounted volumes
+	// TODO lazy load the shards
 	if err := shardManager.LoadAllShards(ctx); err != nil {
 		log.Printf("Warning: Failed to load all shards: %v", err)
 	}
@@ -91,6 +95,7 @@ func main() {
 	go func() {
 		<-sigChan
 		log.Println("Shutting down server...")
+		// todo shutdown shards and unregister the node
 		grpcServer.GracefulStop()
 		cancel()
 	}()
@@ -100,13 +105,35 @@ func main() {
 	if err := grpcServer.Serve(listener); err != nil {
 		log.Fatalf("Failed to serve: %v", err)
 	}
+	// Register the server to metadata store
+	err = metadataStore.RegisterNode(ctx, metadata.NodeInfo{
+		NodeID:  cfg.Node.NodeID,
+		Address: cfg.Server.Address,
+	})
+	if err != nil {
+		// TODO handle the error
+		return
+	}
 }
+
+var _ metadata.MetadataStore = (*MockMetadataStore)(nil)
 
 // MockMetadataStore is a simple in-memory metadata store for development/testing
 type MockMetadataStore struct {
 	shards      map[uint64]*metadata.ShardInfo
 	volumes     map[string]*metadata.VolumeInfo
+	nodes       map[string]*metadata.NodeInfo
 	nextShardID uint64
+}
+
+func (m *MockMetadataStore) RegisterNode(ctx context.Context, info metadata.NodeInfo) error {
+	m.nodes[info.NodeID] = &info
+	return nil
+}
+
+func (m *MockMetadataStore) UnregisterNode(ctx context.Context, nodeID string) error {
+	delete(m.nodes, nodeID)
+	return nil
 }
 
 func NewMockMetadataStore() *MockMetadataStore {
