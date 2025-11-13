@@ -50,6 +50,9 @@ type MetadataStore interface {
 	// DeleteShard removes shard metadata
 	DeleteShard(ctx context.Context, shardID uint64) error
 
+	// ListShardsByVolume lists all shards on a specific volume
+	ListShardsByVolume(ctx context.Context, volumeID string) ([]*ShardInfo, error)
+
 	// Volume operations
 
 	// RegisterVolume registers a volume with its primary node

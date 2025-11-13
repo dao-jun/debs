@@ -210,3 +210,13 @@ func (m *MockMetadataStore) UnregisterVolume(ctx context.Context, volumeID strin
 	delete(m.volumes, volumeID)
 	return nil
 }
+
+func (m *MockMetadataStore) ListShardsByVolume(ctx context.Context, volumeID string) ([]*metadata.ShardInfo, error) {
+	var shards []*metadata.ShardInfo
+	for _, shard := range m.shards {
+		if shard.VolumeID == volumeID {
+			shards = append(shards, shard)
+		}
+	}
+	return shards, nil
+}

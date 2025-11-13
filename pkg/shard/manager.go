@@ -30,8 +30,83 @@ func NewShardManager(
 	}
 }
 
+// selectBestVolume selects the best volume for creating a new shard
+// It chooses the volume with the most available space and fewest active shards
+func (sm *ShardManager) selectBestVolume(ctx context.Context) (string, error) {
+	volumes := sm.volumeManager.ListMountedVolumes()
+	if len(volumes) == 0 {
+		return "", fmt.Errorf("no volumes mounted")
+	}
+
+	var bestVolume string
+	var bestScore float64 = -1
+
+	for _, vol := range volumes {
+		// Only consider primary volumes (read-write)
+		if !vol.IsPrimary {
+			continue
+		}
+
+		// Get volume statistics
+		stats, err := sm.volumeManager.GetVolumeStats(vol.VolumeID)
+		if err != nil {
+			// Skip volumes where we can't get stats
+			continue
+		}
+
+		// Check if volume has enough space (at least 100MB available)
+		minSpaceRequired := uint64(100 * 1024 * 1024) // 100MB
+		if stats.AvailableBytes < minSpaceRequired {
+			continue
+		}
+
+		// Count active shards on this volume
+		shards, err := sm.metadataStore.ListShardsByVolume(ctx, vol.VolumeID)
+		if err != nil {
+			// Skip volumes where we can't get shard info
+			continue
+		}
+
+		activeShardCount := 0
+		for _, shard := range shards {
+			if shard.Status == metadata.ShardStatusActive {
+				activeShardCount++
+			}
+		}
+
+		// Calculate a score: higher is better
+		// Score is based on available space (weighted more) and inverse of active shard count
+		// Normalize available space to GB for scoring
+		availableGB := float64(stats.AvailableBytes) / (1024 * 1024 * 1024)
+		// Weight: 70% available space, 30% inverse of shard count
+		// Add 1 to shard count to avoid division by zero
+		score := (availableGB * 0.7) + (100.0/(float64(activeShardCount)+1))*0.3
+
+		if score > bestScore {
+			bestScore = score
+			bestVolume = vol.VolumeID
+		}
+	}
+
+	if bestVolume == "" {
+		return "", fmt.Errorf("no suitable volume found")
+	}
+
+	return bestVolume, nil
+}
+
 // CreateShard creates a new shard on a volume
+// If volumeID is empty, automatically selects the best volume based on available space and active shard count
 func (sm *ShardManager) CreateShard(ctx context.Context, clientID string, volumeID string) (uint64, error) {
+	// If no volume specified, select the best one
+	if volumeID == "" {
+		selectedVolume, err := sm.selectBestVolume(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("failed to select volume: %w", err)
+		}
+		volumeID = selectedVolume
+	}
+
 	// Generate a new shard ID
 	shardID, err := sm.metadataStore.GenerateShardID(ctx)
 	if err != nil {

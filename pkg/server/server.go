@@ -163,23 +163,10 @@ func (s *StorageServer) NewShard(ctx context.Context, req *pb.NewShardRequest) (
 		return &pb.NewShardResponse{Code: pb.Code_INVALID_ARGUMENT}, nil
 	}
 
-	// Find an available volume
-	// In a real system, this would use a placement algorithm
-	// For now, we'll use the first mounted volume that is primary
-	volumes := s.volumeManager.ListMountedVolumes()
-	var volumeID string
-	for _, vol := range volumes {
-		if vol.IsPrimary {
-			volumeID = vol.VolumeID
-			break
-		}
-	}
-
-	if volumeID == "" {
-		return nil, fmt.Errorf("no primary volume available")
-	}
-
-	shardID, err := s.shardManager.CreateShard(ctx, req.ClientId, volumeID)
+	// CreateShard will automatically select the best volume based on:
+	// 1. Available space on the volume
+	// 2. Number of active shards on the volume
+	shardID, err := s.shardManager.CreateShard(ctx, req.ClientId, "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create shard: %w", err)
 	}
