@@ -8,6 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.267.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cockroachdb/pebble v1.1.5
+	go.uber.org/multierr v1.11.0
 	golang.org/x/sys v0.34.0
 	google.golang.org/grpc v1.76.0
 	google.golang.org/protobuf v1.36.10

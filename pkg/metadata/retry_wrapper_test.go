@@ -7,10 +7,28 @@ import (
 	"time"
 )
 
+var _ MetadataStore = (*MockMetadataStore)(nil)
+
 // MockMetadataStore is a mock implementation for testing
 type MockMetadataStore struct {
 	failCount      int
 	currentAttempt int
+}
+
+func (m *MockMetadataStore) RegisterNode(ctx context.Context, info NodeInfo) error {
+	m.currentAttempt++
+	if m.currentAttempt <= m.failCount {
+		return errors.New("temporary error")
+	}
+	return nil
+}
+
+func (m *MockMetadataStore) UnregisterNode(ctx context.Context, nodeID string) error {
+	m.currentAttempt++
+	if m.currentAttempt <= m.failCount {
+		return errors.New("temporary error")
+	}
+	return nil
 }
 
 func (m *MockMetadataStore) GenerateShardID(ctx context.Context) (uint64, error) {

@@ -27,19 +27,17 @@ type Shard struct {
 
 // NewShard creates a new shard or opens an existing one
 func NewShard(volumeId string, path string, shardID uint64, clientID string, readOnly bool) (*Shard, error) {
-	opts := &pebble.Options{
-		// Configure Pebble for optimal performance
-		MemTableSize:             64 << 20, // 64 MB
-		MaxConcurrentCompactions: func() int { return 3 },
-	}
-
-	if readOnly {
-		opts.ReadOnly = true
-	}
-
-	db, err := pebble.Open(path, opts)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open pebble db at %s: %w", path, err)
+	var db *pebble.DB = nil
+	var err error = nil
+	if !readOnly {
+		db, err = pebble.Open(path, &pebble.Options{
+			// Configure Pebble for optimal performance
+			MemTableSize:             64 << 20, // 64 MB
+			MaxConcurrentCompactions: func() int { return 3 },
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to open pebble db at %s: %w", path, err)
+		}
 	}
 
 	s := &Shard{
@@ -50,8 +48,23 @@ func NewShard(volumeId string, path string, shardID uint64, clientID string, rea
 		readOnly: readOnly,
 		volume:   volumeId,
 	}
-
 	return s, nil
+}
+
+func (s *Shard) openDbIfNeeded() error {
+	if s.db != nil || !s.readOnly {
+		return nil
+	}
+	opts := &pebble.Options{
+		ReadOnly: true,
+		Cache:    GetPebbleCache(),
+	}
+	db, err := pebble.Open(s.path, opts)
+	if err != nil {
+		return err
+	}
+	s.db = db
+	return nil
 }
 
 // Put stores a value with indexes
@@ -92,6 +105,9 @@ func (s *Shard) Get(entryID uint32) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	if err := s.openDbIfNeeded(); err != nil {
+		return nil, IOError
+	}
 	key := makeEntryKey(entryID)
 	value, closer, err := s.db.Get(key)
 	if err != nil {
@@ -114,6 +130,9 @@ func (s *Shard) BatchGet(entryIDs []uint32) (map[uint32][]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	if err := s.openDbIfNeeded(); err != nil {
+		return nil, IOError
+	}
 	results := make(map[uint32][]byte)
 
 	for _, entryID := range entryIDs {
@@ -148,18 +167,6 @@ func (s *Shard) Close() error {
 		}
 		s.db = nil
 	}
-
-	// Reopen in read-only mode
-	opts := &pebble.Options{
-		ReadOnly: true,
-	}
-
-	db, err := pebble.Open(s.path, opts)
-	if err != nil {
-		return IOError
-	}
-
-	s.db = db
 	s.readOnly = true
 
 	return nil

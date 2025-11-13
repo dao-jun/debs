@@ -71,8 +71,9 @@ func main() {
 	// Initialize shard manager
 	shardManager := shard.NewShardManager(volumeManager, metadataStore)
 
+	// Initialize pebble cache
+	shard.InitializePebbleCache()
 	// Load all shards from mounted volumes
-	// TODO lazy load the shards
 	if err := shardManager.LoadAllShards(ctx); err != nil {
 		log.Printf("Warning: Failed to load all shards: %v", err)
 	}
@@ -96,7 +97,16 @@ func main() {
 		<-sigChan
 		log.Println("Shutting down server...")
 		// todo shutdown shards and unregister the node
+		err := metadataStore.UnregisterNode(context.Background(), cfg.Node.NodeID)
+		if err != nil {
+			log.Printf("Error unregistering node: %v", err)
+		}
 		grpcServer.GracefulStop()
+		err = shardManager.Close()
+		if err != nil {
+			log.Printf("Error closing shards: %v", err)
+		}
+		shard.ReleasePebbleCache()
 		cancel()
 	}()
 

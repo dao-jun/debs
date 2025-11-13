@@ -11,11 +11,24 @@ import (
 	"github.com/debs/debs/pkg/volume"
 )
 
+var _ metadata.MetadataStore = (*MockMetadataStore)(nil)
+
 // MockMetadataStore for testing
 type MockMetadataStore struct {
 	shards      map[uint64]*metadata.ShardInfo
 	volumes     map[string]*metadata.VolumeInfo
+	nodes       map[string]*metadata.NodeInfo
 	nextShardID uint64
+}
+
+func (m *MockMetadataStore) RegisterNode(ctx context.Context, info metadata.NodeInfo) error {
+	m.nodes[info.NodeID] = &info
+	return nil
+}
+
+func (m *MockMetadataStore) UnregisterNode(ctx context.Context, nodeID string) error {
+	delete(m.nodes, nodeID)
+	return nil
 }
 
 func NewMockMetadataStore() *MockMetadataStore {

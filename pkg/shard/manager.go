@@ -8,6 +8,7 @@ import (
 
 	"github.com/debs/debs/pkg/metadata"
 	"github.com/debs/debs/pkg/volume"
+	"go.uber.org/multierr"
 )
 
 // ShardManager manages shards on the local node
@@ -142,8 +143,7 @@ func (sm *ShardManager) CreateShard(ctx context.Context, clientID string) (uint6
 
 	if err := sm.metadataStore.CreateShard(ctx, shardInfo); err != nil {
 		// Clean up on failure
-		shard.Delete()
-		os.RemoveAll(shardPath)
+		err = multierr.Combine(err, shard.Delete(), os.RemoveAll(shardPath))
 		return 0, fmt.Errorf("failed to register shard in metadata: %w", err)
 	}
 
@@ -336,6 +336,15 @@ func (sm *ShardManager) UnloadShard(shardID uint64) error {
 	delete(sm.shards, shardID)
 
 	return nil
+}
+
+// Close closes all shards
+func (sm *ShardManager) Close() error {
+	var err error
+	for _, shard := range sm.shards {
+		err = multierr.Append(err, shard.Close())
+	}
+	return err
 }
 
 // LoadAllShards loads all shards from mounted volumes
