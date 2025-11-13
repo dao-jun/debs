@@ -32,6 +32,12 @@ type VolumeInfo struct {
 
 // MetadataStore is the interface for metadata operations
 // This should be implemented using external consensus systems like etcd, ZooKeeper, etc.
+//
+// Note: It's recommended to wrap MetadataStore implementations with RetryWrapper
+// to handle transient failures automatically. Example:
+//
+//	store := NewYourMetadataStoreImpl()
+//	retryStore := NewRetryWrapper(store, DefaultRetryConfig())
 type MetadataStore interface {
 	// Shard operations
 

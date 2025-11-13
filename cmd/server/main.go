@@ -55,7 +55,10 @@ func main() {
 	// Initialize metadata store
 	// NOTE: This is a placeholder - actual implementation depends on the chosen metadata store
 	var metadataStore metadata.MetadataStore
-	metadataStore = NewMockMetadataStore() // For development/testing
+	mockStore := NewMockMetadataStore() // For development/testing
+
+	// Wrap the metadata store with retry logic to handle transient failures
+	metadataStore = metadata.NewRetryWrapper(mockStore, metadata.DefaultRetryConfig())
 
 	// Initialize volume manager
 	volumeManager := volume.NewVolumeManager(

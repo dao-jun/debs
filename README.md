@@ -12,6 +12,7 @@ The storage service is designed to leverage cloud-native block storage (EBS) wit
     - Manages shard-to-volume and volume-to-node mappings
     - Interface-based design for external consensus systems (etcd, ZooKeeper, etc.)
     - Handles shard ID generation and metadata operations
+    - Includes RetryWrapper for automatic retry with exponential backoff on transient failures
 
 2. **VolumeManager** (`pkg/volume`)
     - Manages EBS volume operations on the local node
