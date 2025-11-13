@@ -63,7 +63,7 @@ func TestShardPutGet(t *testing.T) {
 	}
 
 	// Put value
-	if err := shard.Put(entryID, value, indexes); err != nil {
+	if err := shard.Put("client-1", entryID, value, indexes); err != nil {
 		t.Fatalf("Failed to put entry: %v", err)
 	}
 
@@ -104,7 +104,7 @@ func TestShardBatchGet(t *testing.T) {
 	}
 
 	for entryID, value := range entries {
-		if err := shard.Put(entryID, value, nil); err != nil {
+		if err := shard.Put("client-1", entryID, value, nil); err != nil {
 			t.Fatalf("Failed to put entry %d: %v", entryID, err)
 		}
 	}
@@ -155,7 +155,7 @@ func TestShardReadOnly(t *testing.T) {
 	// Put a value
 	entryID := uint32(1)
 	value := []byte("test value")
-	if err := shard.Put(entryID, value, nil); err != nil {
+	if err := shard.Put("client-1", entryID, value, nil); err != nil {
 		t.Fatalf("Failed to put entry: %v", err)
 	}
 
@@ -170,7 +170,7 @@ func TestShardReadOnly(t *testing.T) {
 	}
 
 	// Try to put another value (should fail)
-	if err := shard.Put(2, []byte("another value"), nil); err == nil {
+	if err := shard.Put("client-1", 2, []byte("another value"), nil); err == nil {
 		t.Error("Expected error when putting to read-only shard")
 	}
 
