@@ -17,7 +17,7 @@ func TestNewShard(t *testing.T) {
 	shardPath := filepath.Join(tempDir, "shard-1")
 
 	// Create a new shard
-	shard, err := NewShard(shardPath, 1, "client-1", false)
+	shard, err := NewShard("test-volume", shardPath, 1, "client-1", false)
 	if err != nil {
 		t.Fatalf("Failed to create shard: %v", err)
 	}
@@ -47,8 +47,9 @@ func TestShardPutGet(t *testing.T) {
 
 	shardPath := filepath.Join(tempDir, "shard-1")
 
+	clientId := "client-1"
 	// Create a new shard
-	shard, err := NewShard(shardPath, 1, "client-1", false)
+	shard, err := NewShard("test-volume", shardPath, 1, clientId, false)
 	if err != nil {
 		t.Fatalf("Failed to create shard: %v", err)
 	}
@@ -63,7 +64,7 @@ func TestShardPutGet(t *testing.T) {
 	}
 
 	// Put value
-	if err := shard.Put(entryID, value, indexes); err != nil {
+	if err := shard.Put(clientId, entryID, value, indexes); err != nil {
 		t.Fatalf("Failed to put entry: %v", err)
 	}
 
@@ -89,8 +90,9 @@ func TestShardBatchGet(t *testing.T) {
 
 	shardPath := filepath.Join(tempDir, "shard-1")
 
+	clientId := "client-1"
 	// Create a new shard
-	shard, err := NewShard(shardPath, 1, "client-1", false)
+	shard, err := NewShard("test-volume", shardPath, 1, clientId, false)
 	if err != nil {
 		t.Fatalf("Failed to create shard: %v", err)
 	}
@@ -104,7 +106,7 @@ func TestShardBatchGet(t *testing.T) {
 	}
 
 	for entryID, value := range entries {
-		if err := shard.Put(entryID, value, nil); err != nil {
+		if err := shard.Put(clientId, entryID, value, nil); err != nil {
 			t.Fatalf("Failed to put entry %d: %v", entryID, err)
 		}
 	}
@@ -145,8 +147,10 @@ func TestShardReadOnly(t *testing.T) {
 
 	shardPath := filepath.Join(tempDir, "shard-1")
 
+	clientId := "client-1"
+
 	// Create a new shard
-	shard, err := NewShard(shardPath, 1, "client-1", false)
+	shard, err := NewShard("test-volume", shardPath, 1, clientId, false)
 	if err != nil {
 		t.Fatalf("Failed to create shard: %v", err)
 	}
@@ -155,7 +159,7 @@ func TestShardReadOnly(t *testing.T) {
 	// Put a value
 	entryID := uint32(1)
 	value := []byte("test value")
-	if err := shard.Put(entryID, value, nil); err != nil {
+	if err := shard.Put(clientId, entryID, value, nil); err != nil {
 		t.Fatalf("Failed to put entry: %v", err)
 	}
 
@@ -170,7 +174,7 @@ func TestShardReadOnly(t *testing.T) {
 	}
 
 	// Try to put another value (should fail)
-	if err := shard.Put(2, []byte("another value"), nil); err == nil {
+	if err := shard.Put(clientId, 2, []byte("another value"), nil); err == nil {
 		t.Error("Expected error when putting to read-only shard")
 	}
 
@@ -196,7 +200,7 @@ func TestShardNotFound(t *testing.T) {
 	shardPath := filepath.Join(tempDir, "shard-1")
 
 	// Create a new shard
-	shard, err := NewShard(shardPath, 1, "client-1", false)
+	shard, err := NewShard("test-volume", shardPath, 1, "client-1", false)
 	if err != nil {
 		t.Fatalf("Failed to create shard: %v", err)
 	}

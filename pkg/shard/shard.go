@@ -22,10 +22,11 @@ type Shard struct {
 	db       *pebble.DB
 	path     string
 	readOnly bool
+	volume   string
 }
 
 // NewShard creates a new shard or opens an existing one
-func NewShard(path string, shardID uint64, clientID string, readOnly bool) (*Shard, error) {
+func NewShard(volumeId string, path string, shardID uint64, clientID string, readOnly bool) (*Shard, error) {
 	opts := &pebble.Options{
 		// Configure Pebble for optimal performance
 		MemTableSize:             64 << 20, // 64 MB
@@ -47,6 +48,7 @@ func NewShard(path string, shardID uint64, clientID string, readOnly bool) (*Sha
 		db:       db,
 		path:     path,
 		readOnly: readOnly,
+		volume:   volumeId,
 	}
 
 	return s, nil
@@ -192,6 +194,10 @@ func (s *Shard) GetID() uint64 {
 // GetClientID returns the client ID that owns this shard
 func (s *Shard) GetClientID() string {
 	return s.clientID
+}
+
+func (s *Shard) GetVolumeId() string {
+	return s.volume
 }
 
 // makeEntryKey creates a key for an entry

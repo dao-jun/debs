@@ -3,6 +3,7 @@ package volume
 import (
 	"context"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -309,4 +310,41 @@ func (vm *VolumeManager) IsPrimaryForVolume(volumeID string) bool {
 	}
 
 	return mounted.IsPrimary
+}
+
+// VolumeStats contains statistics about a volume
+type VolumeStats struct {
+	VolumeID       string
+	TotalBytes     uint64
+	AvailableBytes uint64
+	UsedBytes      uint64
+}
+
+// GetVolumeStats returns disk space statistics for a volume
+func (vm *VolumeManager) GetVolumeStats(volumeID string) (*VolumeStats, error) {
+	vm.mu.RLock()
+	mounted, exists := vm.mountedVolumes[volumeID]
+	vm.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("volume %s is not mounted", volumeID)
+	}
+
+	// Use syscall to get filesystem statistics
+	var stat unix.Statfs_t
+	if err := unix.Statfs(mounted.MountPath, &stat); err != nil {
+		return nil, fmt.Errorf("failed to get filesystem stats for %s: %w", mounted.MountPath, err)
+	}
+
+	// Calculate space in bytes
+	totalBytes := stat.Blocks * uint64(stat.Bsize)
+	availableBytes := stat.Bavail * uint64(stat.Bsize)
+	usedBytes := totalBytes - (stat.Bfree * uint64(stat.Bsize))
+
+	return &VolumeStats{
+		VolumeID:       volumeID,
+		TotalBytes:     totalBytes,
+		AvailableBytes: availableBytes,
+		UsedBytes:      usedBytes,
+	}, nil
 }
