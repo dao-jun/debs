@@ -1,0 +1,34 @@
+# Example configuration file for storage service
+
+server:
+  # gRPC server address
+  address: ":50051"
+
+cloud:
+  # Cloud provider: "aws" or "aliyun"
+  provider: "aws"
+  # AWS region
+  region: "us-west-2"
+  # Availability zone for volume creation
+  availability_zone: "us-west-2a"
+
+metadata:
+  # Metadata store type: "etcd", "zookeeper", "consul"
+  type: "etcd"
+  # Metadata store endpoints
+  endpoints:
+    - "localhost:2379"
+  # Namespace for metadata keys
+  namespace: "/storage-service"
+  # Additional options (optional)
+  options:
+    username: ""
+    password: ""
+    tls_enabled: "false"
+
+node:
+  # Unique node identifier
+  node_id: "node-1"
+  # Cloud instance ID (e.g., EC2 instance ID: i-1234567890abcdef0)
+  # Leave empty to auto-detect from instance metadata
+  instance_id: ""
