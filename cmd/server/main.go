@@ -174,11 +174,11 @@ func (m *MockMetadataStore) GetShard(ctx context.Context, shardID uint64) (*meta
 }
 
 func (m *MockMetadataStore) UpdateShardStatus(ctx context.Context, shardID uint64, status metadata.ShardStatus) error {
-	shard, exists := m.shards[shardID]
+	shardInfo, exists := m.shards[shardID]
 	if !exists {
-		return fmt.Errorf("shard not found")
+		return fmt.Errorf("shardInfo not found")
 	}
-	shard.Status = status
+	shardInfo.Status = status
 	return nil
 }
 

@@ -24,22 +24,46 @@ const (
 type Code int32
 
 const (
-	Code_OK               Code = 0
-	Code_NOT_FOUND        Code = 1
-	Code_INVALID_ARGUMENT Code = 2
+	Code_OK                 Code = 0
+	Code_CLIENT_ID_REQUIRED Code = 1
+	Code_SHARD_NOT_FOUND    Code = 2
+	Code_SHARD_FENCED       Code = 3
+	Code_ENTRY_NOT_FOUND    Code = 4
+	Code_READ_EXCEPTION     Code = 5
+	Code_METADATA_EXCEPTION Code = 6
+	Code_WRITE_EXCEPTION    Code = 7
+	Code_NO_NODE_AVAILABLE  Code = 8
+	Code_DEVICE_EXCEPTION   Code = 9
+	Code_NOT_SHARD_LEADER   Code = 10
 )
 
 // Enum value maps for Code.
 var (
 	Code_name = map[int32]string{
-		0: "OK",
-		1: "NOT_FOUND",
-		2: "INVALID_ARGUMENT",
+		0:  "OK",
+		1:  "CLIENT_ID_REQUIRED",
+		2:  "SHARD_NOT_FOUND",
+		3:  "SHARD_FENCED",
+		4:  "ENTRY_NOT_FOUND",
+		5:  "READ_EXCEPTION",
+		6:  "METADATA_EXCEPTION",
+		7:  "WRITE_EXCEPTION",
+		8:  "NO_NODE_AVAILABLE",
+		9:  "DEVICE_EXCEPTION",
+		10: "NOT_SHARD_LEADER",
 	}
 	Code_value = map[string]int32{
-		"OK":               0,
-		"NOT_FOUND":        1,
-		"INVALID_ARGUMENT": 2,
+		"OK":                 0,
+		"CLIENT_ID_REQUIRED": 1,
+		"SHARD_NOT_FOUND":    2,
+		"SHARD_FENCED":       3,
+		"ENTRY_NOT_FOUND":    4,
+		"READ_EXCEPTION":     5,
+		"METADATA_EXCEPTION": 6,
+		"WRITE_EXCEPTION":    7,
+		"NO_NODE_AVAILABLE":  8,
+		"DEVICE_EXCEPTION":   9,
+		"NOT_SHARD_LEADER":   10,
 	}
 )
 
@@ -125,7 +149,7 @@ func (x *BatchPutRequest) GetRequests() []*PutRequest {
 type BatchPutResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// key means entryId
-	Responses     map[uint64]*PutResponse `protobuf:"bytes,1,rep,name=responses,proto3" json:"responses,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Responses     map[uint32]*PutResponse `protobuf:"bytes,1,rep,name=responses,proto3" json:"responses,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -160,7 +184,7 @@ func (*BatchPutResponse) Descriptor() ([]byte, []int) {
 	return file_proto_storage_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *BatchPutResponse) GetResponses() map[uint64]*PutResponse {
+func (x *BatchPutResponse) GetResponses() map[uint32]*PutResponse {
 	if x != nil {
 		return x.Responses
 	}
@@ -794,7 +818,7 @@ const file_proto_storage_proto_rawDesc = "" +
 	"\x10BatchPutResponse\x12F\n" +
 	"\tresponses\x18\x01 \x03(\v2(.storage.BatchPutResponse.ResponsesEntryR\tresponses\x1aR\n" +
 	"\x0eResponsesEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\x04R\x03key\x12*\n" +
+	"\x03key\x18\x01 \x01(\rR\x03key\x12*\n" +
 	"\x05value\x18\x02 \x01(\v2\x14.storage.PutResponseR\x05value:\x028\x01\"\x9c\x01\n" +
 	"\n" +
 	"PutRequest\x12\x1a\n" +
@@ -832,11 +856,20 @@ const file_proto_storage_proto_rawDesc = "" +
 	"\x11CloseShardRequest\x12\x18\n" +
 	"\ashardId\x18\x01 \x01(\x04R\ashardId\"7\n" +
 	"\x12CloseShardResponse\x12!\n" +
-	"\x04code\x18\x01 \x01(\x0e2\r.storage.CodeR\x04code*3\n" +
+	"\x04code\x18\x01 \x01(\x0e2\r.storage.CodeR\x04code*\xe6\x01\n" +
 	"\x04Code\x12\x06\n" +
-	"\x02OK\x10\x00\x12\r\n" +
-	"\tNOT_FOUND\x10\x01\x12\x14\n" +
-	"\x10INVALID_ARGUMENT\x10\x022\xc5\x03\n" +
+	"\x02OK\x10\x00\x12\x16\n" +
+	"\x12CLIENT_ID_REQUIRED\x10\x01\x12\x13\n" +
+	"\x0fSHARD_NOT_FOUND\x10\x02\x12\x10\n" +
+	"\fSHARD_FENCED\x10\x03\x12\x13\n" +
+	"\x0fENTRY_NOT_FOUND\x10\x04\x12\x12\n" +
+	"\x0eREAD_EXCEPTION\x10\x05\x12\x16\n" +
+	"\x12METADATA_EXCEPTION\x10\x06\x12\x13\n" +
+	"\x0fWRITE_EXCEPTION\x10\a\x12\x15\n" +
+	"\x11NO_NODE_AVAILABLE\x10\b\x12\x14\n" +
+	"\x10DEVICE_EXCEPTION\x10\t\x12\x14\n" +
+	"\x10NOT_SHARD_LEADER\x10\n" +
+	"2\xc5\x03\n" +
 	"\x0eStorageService\x120\n" +
 	"\x03Put\x12\x13.storage.PutRequest\x1a\x14.storage.PutResponse\x12?\n" +
 	"\bBatchPut\x12\x18.storage.BatchPutRequest\x1a\x19.storage.BatchPutResponse\x120\n" +

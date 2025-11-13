@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 	"errors"
-	"fmt"
+	"log/slog"
 
 	"github.com/debs/debs/pkg/metadata"
 	"github.com/debs/debs/pkg/shard"
@@ -35,7 +35,7 @@ func NewStorageServer(
 // Put stores a single entry
 func (s *StorageServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse, error) {
 	if req.ClientId == "" {
-		return &pb.PutResponse{Code: pb.Code_INVALID_ARGUMENT}, nil
+		return &pb.PutResponse{Code: pb.Code_CLIENT_ID_REQUIRED}, nil
 	}
 
 	// Convert indexes
@@ -45,52 +45,32 @@ func (s *StorageServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutRes
 	}
 
 	err := s.shardManager.Put(ctx, req.ShardId, req.ClientId, req.EntryId, req.Value, indexes)
-	if err != nil {
-		// Check for specific errors
-		if errors.Is(err, shard.ErrNotFound) {
-			return &pb.PutResponse{Code: pb.Code_NOT_FOUND}, nil
-		}
-		return nil, fmt.Errorf("failed to put entry: %w", err)
-	}
-
-	return &pb.PutResponse{Code: pb.Code_OK}, nil
+	code := ParseErr(err)
+	return &pb.PutResponse{Code: code}, nil
 }
 
 // BatchPut stores multiple entries
 func (s *StorageServer) BatchPut(ctx context.Context, req *pb.BatchPutRequest) (*pb.BatchPutResponse, error) {
 	if req.ClientId == "" {
-		return nil, fmt.Errorf("clientId is required")
+		resp := make(map[uint32]*pb.PutResponse)
+		for _, r := range req.Requests {
+			resp[r.EntryId] = &pb.PutResponse{Code: pb.Code_CLIENT_ID_REQUIRED}
+		}
+		return &pb.BatchPutResponse{Responses: resp}, nil
 	}
 
-	responses := make(map[uint64]*pb.PutResponse)
+	responses := make(map[uint32]*pb.PutResponse)
 
-	for i, putReq := range req.Requests {
-		// Use the batch clientId if individual request doesn't have one
-		clientID := putReq.ClientId
-		if clientID == "" {
-			clientID = req.ClientId
-		}
-
+	for _, putReq := range req.Requests {
 		// Convert indexes
 		indexes := make(map[string][]byte)
 		for _, idx := range putReq.Indexes {
 			indexes[idx.Key] = idx.Value
 		}
 
-		err := s.shardManager.Put(ctx, putReq.ShardId, clientID, putReq.EntryId, putReq.Value, indexes)
-
-		var code pb.Code
-		if err != nil {
-			if errors.Is(err, shard.ErrNotFound) {
-				code = pb.Code_NOT_FOUND
-			} else {
-				code = pb.Code_INVALID_ARGUMENT
-			}
-		} else {
-			code = pb.Code_OK
-		}
-
-		responses[uint64(i)] = &pb.PutResponse{Code: code}
+		err := s.shardManager.Put(ctx, putReq.ShardId, req.ClientId, putReq.EntryId, putReq.Value, indexes)
+		var code = ParseErr(err)
+		responses[putReq.EntryId] = &pb.PutResponse{Code: code}
 	}
 
 	return &pb.BatchPutResponse{Responses: responses}, nil
@@ -99,19 +79,9 @@ func (s *StorageServer) BatchPut(ctx context.Context, req *pb.BatchPutRequest) (
 // Get retrieves a single entry
 func (s *StorageServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
 	value, err := s.shardManager.Get(ctx, req.ShardId, req.EntryId)
-	if err != nil {
-		if errors.Is(err, shard.ErrNotFound) {
-			return &pb.GetResponse{
-				Code:    pb.Code_NOT_FOUND,
-				ShardId: req.ShardId,
-				EntryId: req.EntryId,
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to get entry: %w", err)
-	}
-
+	var code = ParseErr(err)
 	return &pb.GetResponse{
-		Code:    pb.Code_OK,
+		Code:    code,
 		ShardId: req.ShardId,
 		EntryId: req.EntryId,
 		Value:   value,
@@ -120,56 +90,37 @@ func (s *StorageServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetRes
 
 // BatchGet retrieves multiple entries
 func (s *StorageServer) BatchGet(req *pb.BatchGetRequest, stream pb.StorageService_BatchGetServer) error {
-	results, err := s.shardManager.BatchGet(stream.Context(), req.ShardId, req.EntryIds)
-	if err != nil {
-		return fmt.Errorf("failed to batch get: %w", err)
-	}
-
-	// Stream results
-	for entryID, value := range results {
-		resp := &pb.GetResponse{
-			Code:    pb.Code_OK,
-			ShardId: req.ShardId,
-			EntryId: entryID,
+	shardId := req.ShardId
+	for _, entryId := range req.EntryIds {
+		value, err := s.shardManager.Get(stream.Context(), shardId, entryId)
+		if err != nil {
+			return err
+		}
+		var code = ParseErr(err)
+		var resp = &pb.GetResponse{
+			Code:    code,
+			ShardId: shardId,
+			EntryId: entryId,
 			Value:   value,
 		}
-
-		if err := stream.Send(resp); err != nil {
-			return fmt.Errorf("failed to send response: %w", err)
+		if err := stream.SendMsg(resp); err != nil {
+			slog.Error("failed to send response", "error", err)
+			return err
 		}
 	}
-
-	// Send NOT_FOUND for missing entries
-	for _, entryID := range req.EntryIds {
-		if _, found := results[entryID]; !found {
-			resp := &pb.GetResponse{
-				Code:    pb.Code_NOT_FOUND,
-				ShardId: req.ShardId,
-				EntryId: entryID,
-			}
-
-			if err := stream.Send(resp); err != nil {
-				return fmt.Errorf("failed to send response: %w", err)
-			}
-		}
-	}
-
 	return nil
 }
 
 // NewShard creates a new shard
 func (s *StorageServer) NewShard(ctx context.Context, req *pb.NewShardRequest) (*pb.NewShardResponse, error) {
 	if req.ClientId == "" {
-		return &pb.NewShardResponse{Code: pb.Code_INVALID_ARGUMENT}, nil
+		return &pb.NewShardResponse{Code: pb.Code_CLIENT_ID_REQUIRED}, nil
 	}
 
 	shardID, err := s.shardManager.CreateShard(ctx, req.ClientId)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create shard: %w", err)
-	}
-
+	var code = ParseErr(err)
 	return &pb.NewShardResponse{
-		Code:    pb.Code_OK,
+		Code:    code,
 		ShardId: shardID,
 	}, nil
 }
@@ -177,25 +128,38 @@ func (s *StorageServer) NewShard(ctx context.Context, req *pb.NewShardRequest) (
 // DeleteShard deletes a shard
 func (s *StorageServer) DeleteShard(ctx context.Context, req *pb.DeleteShardRequest) (*pb.DeleteShardResponse, error) {
 	err := s.shardManager.DeleteShard(ctx, req.ShardId)
-	if err != nil {
-		if errors.Is(err, shard.ErrNotFound) {
-			return &pb.DeleteShardResponse{Code: pb.Code_NOT_FOUND}, nil
-		}
-		return nil, fmt.Errorf("failed to delete shard: %w", err)
-	}
-
-	return &pb.DeleteShardResponse{Code: pb.Code_OK}, nil
+	var code = ParseErr(err)
+	return &pb.DeleteShardResponse{Code: code}, nil
 }
 
 // CloseShard closes a shard (marks it read-only)
 func (s *StorageServer) CloseShard(ctx context.Context, req *pb.CloseShardRequest) (*pb.CloseShardResponse, error) {
 	err := s.shardManager.CloseShard(ctx, req.ShardId)
-	if err != nil {
-		if errors.Is(err, shard.ErrNotFound) {
-			return &pb.CloseShardResponse{Code: pb.Code_NOT_FOUND}, nil
-		}
-		return nil, fmt.Errorf("failed to close shard: %w", err)
-	}
+	var code = ParseErr(err)
+	return &pb.CloseShardResponse{Code: code}, nil
+}
 
-	return &pb.CloseShardResponse{Code: pb.Code_OK}, nil
+func ParseErr(err error) pb.Code {
+	if err == nil {
+		return pb.Code_OK
+	} else if errors.Is(err, shard.ErrEntryNotFound) {
+		return pb.Code_ENTRY_NOT_FOUND
+	} else if errors.Is(err, shard.ErrShardNotFound) {
+		return pb.Code_SHARD_NOT_FOUND
+	} else if errors.Is(err, metadata.ErrMetadata) {
+		return pb.Code_METADATA_EXCEPTION
+	} else if errors.Is(err, shard.ErrIO) {
+		return pb.Code_DEVICE_EXCEPTION
+	} else if errors.Is(err, shard.ErrReadFailed) {
+		return pb.Code_READ_EXCEPTION
+	} else if errors.Is(err, shard.ErrWriteFailed) {
+		return pb.Code_WRITE_EXCEPTION
+	} else if errors.Is(err, shard.ErrFenced) {
+		return pb.Code_SHARD_FENCED
+	} else if errors.Is(err, shard.ErrNotShardLeader) {
+		return pb.Code_NOT_SHARD_LEADER
+	}
+	// CONVERT MORE errors
+
+	return pb.Code_OK
 }

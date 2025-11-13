@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"context"
+	"errors"
 )
 
 // ShardInfo contains information about a shard
@@ -34,6 +35,8 @@ type NodeInfo struct {
 	NodeID  string
 	Address string
 }
+
+var ErrMetadata = errors.New("operate metadata store failed")
 
 // MetadataStore is the interface for metadata operations
 // This should be implemented using external consensus systems like etcd, ZooKeeper, etc.

@@ -2,6 +2,7 @@ package volume
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"golang.org/x/sys/unix"
 	"os"
@@ -13,6 +14,16 @@ import (
 	"github.com/debs/debs/pkg/cloud"
 	"github.com/debs/debs/pkg/metadata"
 )
+
+var ErrVolumeNotMounted = errors.New("volume is not mounted")
+var ErrVolumeAlreadyMounted = errors.New("volume is already mounted")
+var ErrVolumeNotFound = errors.New("volume not found")
+var ErrAttachVolume = errors.New("failed to attach volume")
+var ErrDetachVolume = errors.New("failed to detach volume")
+var ErrEnsureFilesystem = errors.New("failed to ensure filesystem")
+var ErrNotMounted = errors.New("not mounted")
+var ErrVolumeStats = errors.New("failed to get volume stats")
+var ErrNoEnoughVolume = errors.New("not enough volume")
 
 // VolumeManager manages EBS volumes on the local node
 type VolumeManager struct {
@@ -57,35 +68,35 @@ func (vm *VolumeManager) MountVolume(ctx context.Context, volumeID string, devic
 
 	// Check if already mounted
 	if _, exists := vm.mountedVolumes[volumeID]; exists {
-		return fmt.Errorf("volume %s is already mounted", volumeID)
+		return ErrVolumeAlreadyMounted
 	}
 
 	// Attach the volume to this instance
 	err := vm.provider.AttachVolume(ctx, volumeID, vm.instanceID, device)
 	if err != nil {
-		return fmt.Errorf("failed to attach volume: %w", err)
+		return ErrAttachVolume
 	}
 
 	// Wait for the volume to be attached
 	err = vm.provider.WaitForVolumeAttached(ctx, volumeID, vm.instanceID)
 	if err != nil {
-		return fmt.Errorf("failed waiting for volume to attach: %w", err)
+		return ErrAttachVolume
 	}
 
 	// Wait for device to appear in the system
 	if err := vm.waitForDevice(device, 30*time.Second); err != nil {
-		return fmt.Errorf("device %s did not appear: %w", device, err)
+		return err
 	}
 
 	// Create mount point
 	mountPath := fmt.Sprintf("/%s", volumeID)
 	if err := os.MkdirAll(mountPath, 0755); err != nil {
-		return fmt.Errorf("failed to create mount point: %w", err)
+		return ErrAttachVolume
 	}
 
 	// Check if the device has a filesystem, if not create one
 	if err := vm.ensureFilesystem(device); err != nil {
-		return fmt.Errorf("failed to ensure filesystem: %w", err)
+		return ErrEnsureFilesystem
 	}
 
 	// Mount the volume
@@ -96,8 +107,8 @@ func (vm *VolumeManager) MountVolume(ctx context.Context, volumeID string, devic
 	}
 
 	cmd := exec.Command("mount", "-o", mountOptions, device, mountPath)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to mount volume: %s, %w", string(output), err)
+	if _, err := cmd.CombinedOutput(); err != nil {
+		return ErrAttachVolume
 	}
 
 	// Record the mounted volume
@@ -120,14 +131,14 @@ func (vm *VolumeManager) MountVolume(ctx context.Context, volumeID string, devic
 			MountPath:   mountPath,
 			BackupNodes: []string{},
 		}
-		if err := vm.metadataStore.RegisterVolume(ctx, volumeInfo); err != nil {
-			return fmt.Errorf("failed to register volume in metadata: %w", err)
+		if err = vm.metadataStore.RegisterVolume(ctx, volumeInfo); err != nil {
+			return metadata.ErrMetadata
 		}
 	} else {
 		// Add this node as a backup node if not primary
 		if !isPrimary {
 			if err := vm.metadataStore.AddBackupNode(ctx, volumeID, vm.nodeID); err != nil {
-				return fmt.Errorf("failed to add backup node: %w", err)
+				return metadata.ErrMetadata
 			}
 		}
 	}
@@ -142,33 +153,33 @@ func (vm *VolumeManager) UnmountVolume(ctx context.Context, volumeID string, for
 
 	mounted, exists := vm.mountedVolumes[volumeID]
 	if !exists {
-		return fmt.Errorf("volume %s is not mounted", volumeID)
+		return ErrVolumeNotMounted
 	}
 
 	// Unmount the volume
 	cmd := exec.Command("umount", mounted.MountPath)
-	if output, err := cmd.CombinedOutput(); err != nil {
+	if _, err := cmd.CombinedOutput(); err != nil {
 		if !force {
-			return fmt.Errorf("failed to unmount volume: %s, %w", string(output), err)
+			return ErrDetachVolume
 		}
 		// Force unmount
 		cmd = exec.Command("umount", "-f", mounted.MountPath)
-		if output, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to force unmount volume: %s, %w", string(output), err)
+		if _, err := cmd.CombinedOutput(); err != nil {
+			return ErrDetachVolume
 		}
 	}
 
 	// Detach the volume
 	err := vm.provider.DetachVolume(ctx, volumeID, vm.instanceID, force)
 	if err != nil {
-		return fmt.Errorf("failed to detach volume: %w", err)
+		return ErrDetachVolume
 	}
 
 	// Wait for the volume to be detached
 	if !force {
 		err = vm.provider.WaitForVolumeDetached(ctx, volumeID, vm.instanceID)
 		if err != nil {
-			return fmt.Errorf("failed waiting for volume to detach: %w", err)
+			return ErrDetachVolume
 		}
 	}
 
@@ -182,7 +193,7 @@ func (vm *VolumeManager) UnmountVolume(ctx context.Context, volumeID string, for
 	} else {
 		// Remove from backup nodes
 		if err := vm.metadataStore.RemoveBackupNode(ctx, volumeID, vm.nodeID); err != nil {
-			return fmt.Errorf("failed to remove backup node: %w", err)
+			return metadata.ErrMetadata
 		}
 	}
 
@@ -196,7 +207,7 @@ func (vm *VolumeManager) GetMountedVolume(volumeID string) (*MountedVolume, erro
 
 	mounted, exists := vm.mountedVolumes[volumeID]
 	if !exists {
-		return nil, fmt.Errorf("volume %s is not mounted", volumeID)
+		return nil, ErrNotMounted
 	}
 
 	return mounted, nil
@@ -255,7 +266,7 @@ func (vm *VolumeManager) waitForDevice(device string, timeout time.Duration) err
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	return fmt.Errorf("timeout waiting for device %s", device)
+	return ErrAttachVolume
 }
 
 // ensureFilesystem checks if a filesystem exists on the device, and creates one if not
@@ -269,8 +280,8 @@ func (vm *VolumeManager) ensureFilesystem(device string) error {
 
 	// Create ext4 filesystem
 	cmd = exec.Command("mkfs.ext4", "-F", device)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to create filesystem: %s, %w", string(output), err)
+	if _, err := cmd.CombinedOutput(); err != nil {
+		return ErrEnsureFilesystem
 	}
 
 	return nil
@@ -280,7 +291,7 @@ func (vm *VolumeManager) ensureFilesystem(device string) error {
 func (vm *VolumeManager) GetVolumeForShard(ctx context.Context, shardID uint64) (string, error) {
 	shardInfo, err := vm.metadataStore.GetShard(ctx, shardID)
 	if err != nil {
-		return "", fmt.Errorf("failed to get shard info: %w", err)
+		return "", metadata.ErrMetadata
 	}
 
 	return shardInfo.VolumeID, nil
@@ -293,7 +304,7 @@ func (vm *VolumeManager) GetShardPath(volumeID string, shardID uint64) (string, 
 
 	mounted, exists := vm.mountedVolumes[volumeID]
 	if !exists {
-		return "", fmt.Errorf("volume %s is not mounted", volumeID)
+		return "", ErrVolumeNotMounted
 	}
 
 	return filepath.Join(mounted.MountPath, fmt.Sprintf("shard-%d", shardID)), nil
@@ -327,13 +338,13 @@ func (vm *VolumeManager) GetVolumeStats(volumeID string) (*VolumeStats, error) {
 	vm.mu.RUnlock()
 
 	if !exists {
-		return nil, fmt.Errorf("volume %s is not mounted", volumeID)
+		return nil, ErrVolumeNotMounted
 	}
 
 	// Use syscall to get filesystem statistics
 	var stat unix.Statfs_t
 	if err := unix.Statfs(mounted.MountPath, &stat); err != nil {
-		return nil, fmt.Errorf("failed to get filesystem stats for %s: %w", mounted.MountPath, err)
+		return nil, ErrVolumeStats
 	}
 
 	// Calculate space in bytes

@@ -53,7 +53,7 @@ func (m *MockMetadataStore) CreateShard(ctx context.Context, shard *metadata.Sha
 func (m *MockMetadataStore) GetShard(ctx context.Context, shardID uint64) (*metadata.ShardInfo, error) {
 	shard, exists := m.shards[shardID]
 	if !exists {
-		return nil, ErrNotFound
+		return nil, ErrEntryNotFound
 	}
 	return shard, nil
 }
@@ -61,7 +61,7 @@ func (m *MockMetadataStore) GetShard(ctx context.Context, shardID uint64) (*meta
 func (m *MockMetadataStore) UpdateShardStatus(ctx context.Context, shardID uint64, status metadata.ShardStatus) error {
 	shard, exists := m.shards[shardID]
 	if !exists {
-		return ErrNotFound
+		return ErrEntryNotFound
 	}
 	shard.Status = status
 	return nil
@@ -90,7 +90,7 @@ func (m *MockMetadataStore) RegisterVolume(ctx context.Context, volume *metadata
 func (m *MockMetadataStore) GetVolume(ctx context.Context, volumeID string) (*metadata.VolumeInfo, error) {
 	volume, exists := m.volumes[volumeID]
 	if !exists {
-		return nil, ErrNotFound
+		return nil, ErrEntryNotFound
 	}
 	return volume, nil
 }
@@ -98,7 +98,7 @@ func (m *MockMetadataStore) GetVolume(ctx context.Context, volumeID string) (*me
 func (m *MockMetadataStore) UpdateVolumePrimary(ctx context.Context, volumeID string, newPrimaryNodeID string) error {
 	volume, exists := m.volumes[volumeID]
 	if !exists {
-		return ErrNotFound
+		return ErrEntryNotFound
 	}
 	volume.NodeID = newPrimaryNodeID
 	volume.IsPrimary = true
@@ -118,7 +118,7 @@ func (m *MockMetadataStore) ListVolumesByNode(ctx context.Context, nodeID string
 func (m *MockMetadataStore) AddBackupNode(ctx context.Context, volumeID string, nodeID string) error {
 	volume, exists := m.volumes[volumeID]
 	if !exists {
-		return ErrNotFound
+		return ErrEntryNotFound
 	}
 	volume.BackupNodes = append(volume.BackupNodes, nodeID)
 	return nil
@@ -127,7 +127,7 @@ func (m *MockMetadataStore) AddBackupNode(ctx context.Context, volumeID string, 
 func (m *MockMetadataStore) RemoveBackupNode(ctx context.Context, volumeID string, nodeID string) error {
 	volume, exists := m.volumes[volumeID]
 	if !exists {
-		return ErrNotFound
+		return ErrEntryNotFound
 	}
 	for i, n := range volume.BackupNodes {
 		if n == nodeID {
@@ -192,7 +192,9 @@ func TestCreateShardWithAutoVolumeSelection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func(path string) {
+		_ = os.RemoveAll(path)
+	}(tempDir)
 
 	// Create two volume mount points
 	vol1Path := filepath.Join(tempDir, "vol-1")
@@ -246,7 +248,9 @@ func TestSelectBestVolumeLogic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func(path string) {
+		_ = os.RemoveAll(path)
+	}(tempDir)
 
 	// Create mock metadata store
 	metadataStore := NewMockMetadataStore()
@@ -278,7 +282,9 @@ func TestCreateShardWithMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func(path string) {
+		_ = os.RemoveAll(path)
+	}(tempDir)
 
 	// Create mock metadata store
 	metadataStore := NewMockMetadataStore()

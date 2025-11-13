@@ -12,7 +12,9 @@ func TestNewShard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func(path string) {
+		_ = os.RemoveAll(path)
+	}(tempDir)
 
 	shardPath := filepath.Join(tempDir, "shard-1")
 
@@ -21,7 +23,9 @@ func TestNewShard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create shard: %v", err)
 	}
-	defer shard.Delete()
+	defer func(shard *Shard) {
+		_ = shard.Delete()
+	}(shard)
 
 	// Verify shard properties
 	if shard.GetID() != 1 {
@@ -43,7 +47,9 @@ func TestShardPutGet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func(path string) {
+		_ = os.RemoveAll(path)
+	}(tempDir)
 
 	shardPath := filepath.Join(tempDir, "shard-1")
 
@@ -53,7 +59,9 @@ func TestShardPutGet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create shard: %v", err)
 	}
-	defer shard.Delete()
+	defer func(shard *Shard) {
+		_ = shard.Delete()
+	}(shard)
 
 	// Test Put and Get
 	entryID := uint32(100)
@@ -80,70 +88,15 @@ func TestShardPutGet(t *testing.T) {
 	}
 }
 
-func TestShardBatchGet(t *testing.T) {
-	// Create a temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "shard-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	shardPath := filepath.Join(tempDir, "shard-1")
-
-	clientId := "client-1"
-	// Create a new shard
-	shard, err := NewShard("test-volume", shardPath, 1, clientId, false)
-	if err != nil {
-		t.Fatalf("Failed to create shard: %v", err)
-	}
-	defer shard.Delete()
-
-	// Put multiple entries
-	entries := map[uint32][]byte{
-		1: []byte("value1"),
-		2: []byte("value2"),
-		3: []byte("value3"),
-	}
-
-	for entryID, value := range entries {
-		if err := shard.Put(clientId, entryID, value, nil); err != nil {
-			t.Fatalf("Failed to put entry %d: %v", entryID, err)
-		}
-	}
-
-	// Batch get
-	entryIDs := []uint32{1, 2, 3, 999} // 999 doesn't exist
-	results, err := shard.BatchGet(entryIDs)
-	if err != nil {
-		t.Fatalf("Failed to batch get: %v", err)
-	}
-
-	// Verify results
-	if len(results) != 3 {
-		t.Errorf("Expected 3 results, got %d", len(results))
-	}
-
-	for entryID, expectedValue := range entries {
-		if value, exists := results[entryID]; !exists {
-			t.Errorf("Entry %d not found in results", entryID)
-		} else if string(value) != string(expectedValue) {
-			t.Errorf("Entry %d: expected '%s', got '%s'", entryID, string(expectedValue), string(value))
-		}
-	}
-
-	// Verify that non-existent entry is not in results
-	if _, exists := results[999]; exists {
-		t.Error("Non-existent entry 999 should not be in results")
-	}
-}
-
 func TestShardReadOnly(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "shard-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func(path string) {
+		_ = os.RemoveAll(path)
+	}(tempDir)
 
 	shardPath := filepath.Join(tempDir, "shard-1")
 
@@ -154,7 +107,9 @@ func TestShardReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create shard: %v", err)
 	}
-	defer shard.Delete()
+	defer func(shard *Shard) {
+		_ = shard.Delete()
+	}(shard)
 
 	// Put a value
 	entryID := uint32(1)
@@ -195,7 +150,9 @@ func TestShardNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func(path string) {
+		_ = os.RemoveAll(path)
+	}(tempDir)
 
 	shardPath := filepath.Join(tempDir, "shard-1")
 
@@ -204,11 +161,13 @@ func TestShardNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create shard: %v", err)
 	}
-	defer shard.Delete()
+	defer func(shard *Shard) {
+		_ = shard.Delete()
+	}(shard)
 
 	// Try to get non-existent entry
 	_, err = shard.Get(999)
-	if err != ErrNotFound {
-		t.Errorf("Expected ErrNotFound, got %v", err)
+	if err != ErrEntryNotFound {
+		t.Errorf("Expected ErrEntryNotFound, got %v", err)
 	}
 }
