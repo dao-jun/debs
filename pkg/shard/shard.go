@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/cockroachdb/pebble"
 )
@@ -31,6 +32,7 @@ type Shard struct {
 	path     string
 	readOnly bool
 	volume   string
+	closed   atomic.Bool
 }
 
 // NewShard creates a new shard or opens an existing one
@@ -39,6 +41,7 @@ func NewShard(volumeId string, path string, shardID uint64, clientID string, rea
 	var err error = nil
 	if !readOnly {
 		db, err = pebble.Open(path, &pebble.Options{
+			DisableWAL: true,
 			// Configure Pebble for optimal performance
 			MemTableSize:             64 << 20, // 64 MB
 			MaxConcurrentCompactions: func() int { return 3 },
@@ -55,6 +58,7 @@ func NewShard(volumeId string, path string, shardID uint64, clientID string, rea
 		path:     path,
 		readOnly: readOnly,
 		volume:   volumeId,
+		closed:   atomic.Bool{},
 	}
 	return s, err
 }
@@ -80,6 +84,9 @@ func (s *Shard) Put(clientId string, entryID uint32, value []byte, indexes map[s
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.closed.Load() {
+		return ErrFenced
+	}
 	if s.readOnly || !strings.EqualFold(clientId, s.clientID) {
 		return ErrFenced
 	}
@@ -117,6 +124,9 @@ func (s *Shard) Get(entryID uint32) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	if s.closed.Load() {
+		return nil, ErrFenced
+	}
 	if err := s.openDbIfNeeded(); err != nil {
 		return nil, ErrReadFailed
 	}
@@ -146,6 +156,10 @@ func (s *Shard) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.closed.Load() {
+		return nil
+	}
+	s.closed.Store(true)
 	if s.db != nil {
 		if err := s.db.Close(); err != nil {
 			return ErrIO
@@ -154,20 +168,6 @@ func (s *Shard) Close() error {
 	}
 	s.readOnly = true
 
-	return nil
-}
-
-// Delete deletes the shard data
-func (s *Shard) Delete() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.db != nil {
-		if err := s.db.Close(); err != nil {
-			return ErrIO
-		}
-		s.db = nil
-	}
 	return nil
 }
 

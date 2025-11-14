@@ -25,6 +25,21 @@ var ErrNotMounted = errors.New("not mounted")
 var ErrVolumeStats = errors.New("failed to get volume stats")
 var ErrNoEnoughVolume = errors.New("not enough volume")
 
+func IsVolumeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, ErrVolumeNotMounted) ||
+		errors.Is(err, ErrVolumeAlreadyMounted) ||
+		errors.Is(err, ErrVolumeNotFound) ||
+		errors.Is(err, ErrAttachVolume) ||
+		errors.Is(err, ErrDetachVolume) ||
+		errors.Is(err, ErrEnsureFilesystem) ||
+		errors.Is(err, ErrNotMounted) ||
+		errors.Is(err, ErrVolumeStats) ||
+		errors.Is(err, ErrNoEnoughVolume)
+}
+
 // VolumeManager manages EBS volumes on the local node
 type VolumeManager struct {
 	mu             sync.RWMutex
@@ -55,6 +70,28 @@ func NewVolumeManager(
 		nodeID:         nodeID,
 		mountedVolumes: make(map[string]*MountedVolume),
 	}
+}
+
+func (vm *VolumeManager) AddMountedVolume(ctx context.Context, v *MountedVolume) error {
+	var volumeID = v.VolumeID
+	vm.mountedVolumes[volumeID] = v
+
+	// TODO
+	//volumeInfo, err := vm.metadataStore.GetVolume(ctx, volumeID)
+	//if err != nil {
+	//	// If volume doesn't exist in metadata, register it
+	//	volumeInfo = &metadata.VolumeInfo{
+	//		VolumeID:    volumeID,
+	//		NodeID:      vm.nodeID,
+	//		IsPrimary:   false,
+	//		MountPath:   v.MountPath,
+	//		BackupNodes: append(volumeInfo.BackupNodes, vm.nodeID),
+	//	}
+	//	if err = vm.metadataStore.RegisterVolume(ctx, volumeInfo); err != nil {
+	//		return metadata.ErrMetadata
+	//	}
+	//}
+	return nil
 }
 
 // MountVolume mounts an EBS volume to the node
@@ -118,6 +155,7 @@ func (vm *VolumeManager) MountVolume(ctx context.Context, volumeID string, devic
 	}
 
 	// Update metadata
+	// TODO handle not found
 	volumeInfo, err := vm.metadataStore.GetVolume(ctx, volumeID)
 	if err != nil {
 		// If volume doesn't exist in metadata, register it
@@ -129,13 +167,13 @@ func (vm *VolumeManager) MountVolume(ctx context.Context, volumeID string, devic
 			BackupNodes: []string{},
 		}
 		if err = vm.metadataStore.RegisterVolume(ctx, volumeInfo); err != nil {
-			return metadata.ErrMetadata
+			return err
 		}
 	} else {
 		// Add this node as a backup node if not primary
 		if !isPrimary {
 			if err := vm.metadataStore.AddBackupNode(ctx, volumeID, vm.nodeID); err != nil {
-				return metadata.ErrMetadata
+				return err
 			}
 		}
 	}
@@ -288,7 +326,7 @@ func (vm *VolumeManager) ensureFilesystem(device string) error {
 func (vm *VolumeManager) GetVolumeForShard(ctx context.Context, shardID uint64) (string, error) {
 	shardInfo, err := vm.metadataStore.GetShard(ctx, shardID)
 	if err != nil {
-		return "", metadata.ErrMetadata
+		return "", err
 	}
 
 	return shardInfo.VolumeID, nil

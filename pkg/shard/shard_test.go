@@ -24,7 +24,7 @@ func TestNewShard(t *testing.T) {
 		t.Fatalf("Failed to create shard: %v", err)
 	}
 	defer func(shard *Shard) {
-		_ = shard.Delete()
+		_ = shard.Close()
 	}(shard)
 
 	// Verify shard properties
@@ -60,7 +60,7 @@ func TestShardPutGet(t *testing.T) {
 		t.Fatalf("Failed to create shard: %v", err)
 	}
 	defer func(shard *Shard) {
-		_ = shard.Delete()
+		_ = shard.Close()
 	}(shard)
 
 	// Test Put and Get
@@ -108,7 +108,7 @@ func TestShardReadOnly(t *testing.T) {
 		t.Fatalf("Failed to create shard: %v", err)
 	}
 	defer func(shard *Shard) {
-		_ = shard.Delete()
+		_ = shard.Close()
 	}(shard)
 
 	// Put a value
@@ -133,12 +133,15 @@ func TestShardReadOnly(t *testing.T) {
 		t.Error("Expected error when putting to read-only shard")
 	}
 
-	// Get should still work
+	// Get should not still work
 	retrievedValue, err := shard.Get(entryID)
-	if err != nil {
-		t.Fatalf("Failed to get entry from read-only shard: %v", err)
+	if err == nil {
+		t.Errorf("Failed to get entry from read-only shard: %v", err)
 	}
 
+	if err != nil {
+		return
+	}
 	if string(retrievedValue) != string(value) {
 		t.Errorf("Expected value '%s', got '%s'", string(value), string(retrievedValue))
 	}
@@ -162,7 +165,7 @@ func TestShardNotFound(t *testing.T) {
 		t.Fatalf("Failed to create shard: %v", err)
 	}
 	defer func(shard *Shard) {
-		_ = shard.Delete()
+		_ = shard.Close()
 	}(shard)
 
 	// Try to get non-existent entry

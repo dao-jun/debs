@@ -2,15 +2,19 @@ package shard
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/debs/debs/pkg/metadata"
 	"github.com/debs/debs/pkg/volume"
 	"go.uber.org/multierr"
 )
+
+var ErrShardManagerClosed = errors.New("shard manager closed")
 
 // ShardManager manages shards on the local node
 type ShardManager struct {
@@ -18,6 +22,7 @@ type ShardManager struct {
 	shards        map[uint64]*Shard // shardID -> Shard
 	volumeManager *volume.VolumeManager
 	metadataStore metadata.MetadataStore
+	closed        atomic.Bool
 }
 
 // NewShardManager creates a new ShardManager
@@ -29,6 +34,7 @@ func NewShardManager(
 		shards:        make(map[uint64]*Shard),
 		volumeManager: volumeManager,
 		metadataStore: metadataStore,
+		closed:        atomic.Bool{},
 	}
 }
 
@@ -105,6 +111,9 @@ func (sm *ShardManager) selectBestVolume() (string, error) {
 // CreateShard creates a new shard on a volume
 // If volumeID is empty, automatically selects the best volume based on available space and active shard count
 func (sm *ShardManager) CreateShard(ctx context.Context, clientID string) (uint64, error) {
+	if sm.closed.Load() {
+		return 0, ErrShardManagerClosed
+	}
 	// If no volume specified, select the best one
 	volumeID, err := sm.selectBestVolume()
 	if err != nil {
@@ -144,7 +153,7 @@ func (sm *ShardManager) CreateShard(ctx context.Context, clientID string) (uint6
 
 	if err = sm.metadataStore.CreateShard(ctx, shardInfo); err != nil {
 		// Clean up on failure
-		err = multierr.Combine(err, shard.Delete(), os.RemoveAll(shardPath))
+		err = multierr.Combine(err, shard.Close(), os.RemoveAll(shardPath))
 		return 0, metadata.ErrMetadata
 	}
 
@@ -158,6 +167,10 @@ func (sm *ShardManager) CreateShard(ctx context.Context, clientID string) (uint6
 
 // GetShard gets a shard by ID, loading it if necessary
 func (sm *ShardManager) GetShard(ctx context.Context, shardID uint64) (*Shard, error) {
+	if sm.closed.Load() {
+		return nil, ErrShardManagerClosed
+	}
+
 	sm.mu.RLock()
 	shard, exists := sm.shards[shardID]
 	sm.mu.RUnlock()
@@ -183,7 +196,10 @@ func (sm *ShardManager) loadShard(ctx context.Context, shardID uint64) (*Shard, 
 	// Get shard metadata
 	shardInfo, err := sm.metadataStore.GetShard(ctx, shardID)
 	if err != nil {
-		return nil, metadata.ErrMetadata
+		if errors.Is(err, metadata.ErrNotFound) {
+			return nil, ErrShardNotFound
+		}
+		return nil, err
 	}
 
 	// Get the shard path
@@ -221,6 +237,9 @@ func (sm *ShardManager) CloseShard(ctx context.Context, shardID uint64) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
+	if sm.closed.Load() {
+		return nil
+	}
 	shard, exists := sm.shards[shardID]
 	if !exists {
 		return ErrShardNotFound
@@ -244,15 +263,21 @@ func (sm *ShardManager) DeleteShard(ctx context.Context, shardID uint64) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
+	if sm.closed.Load() {
+		return nil
+	}
 	// Get shard metadata first
 	shardInfo, err := sm.metadataStore.GetShard(ctx, shardID)
 	if err != nil {
-		return metadata.ErrMetadata
+		if errors.Is(err, metadata.ErrNotFound) {
+			return ErrShardNotFound
+		}
+		return err
 	}
 
 	// Close and remove from cache if loaded
 	if shard, exists := sm.shards[shardID]; exists {
-		if err := shard.Delete(); err != nil {
+		if err := shard.Close(); err != nil {
 			return err
 		}
 		delete(sm.shards, shardID)
@@ -320,7 +345,7 @@ func (sm *ShardManager) UnloadShard(shardID uint64) error {
 		return nil // Already unloaded
 	}
 
-	if err := shard.Delete(); err != nil {
+	if err := shard.Close(); err != nil {
 		return err
 	}
 
@@ -331,6 +356,13 @@ func (sm *ShardManager) UnloadShard(shardID uint64) error {
 
 // Close closes all shards
 func (sm *ShardManager) Close() error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if sm.closed.Load() {
+		return nil
+	}
+	sm.closed.Store(true)
 	var err error
 	for _, shard := range sm.shards {
 		err = multierr.Append(err, shard.Close())

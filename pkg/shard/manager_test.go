@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/debs/debs/pkg/cloud"
 	"github.com/debs/debs/pkg/metadata"
@@ -21,16 +22,6 @@ type MockMetadataStore struct {
 	nextShardID uint64
 }
 
-func (m *MockMetadataStore) RegisterNode(ctx context.Context, info metadata.NodeInfo) error {
-	m.nodes[info.NodeID] = &info
-	return nil
-}
-
-func (m *MockMetadataStore) UnregisterNode(ctx context.Context, nodeID string) error {
-	delete(m.nodes, nodeID)
-	return nil
-}
-
 func NewMockMetadataStore() *MockMetadataStore {
 	return &MockMetadataStore{
 		shards:      make(map[uint64]*metadata.ShardInfo),
@@ -39,18 +30,28 @@ func NewMockMetadataStore() *MockMetadataStore {
 	}
 }
 
-func (m *MockMetadataStore) GenerateShardID(ctx context.Context) (uint64, error) {
+func (m *MockMetadataStore) RegisterNode(ctx context.Context, info metadata.NodeInfo) metadata.MetadataError {
+	m.nodes[info.NodeID] = &info
+	return nil
+}
+
+func (m *MockMetadataStore) UnregisterNode(ctx context.Context, nodeID string) metadata.MetadataError {
+	delete(m.nodes, nodeID)
+	return nil
+}
+
+func (m *MockMetadataStore) GenerateShardID(ctx context.Context) (uint64, metadata.MetadataError) {
 	id := m.nextShardID
 	m.nextShardID++
 	return id, nil
 }
 
-func (m *MockMetadataStore) CreateShard(ctx context.Context, shard *metadata.ShardInfo) error {
+func (m *MockMetadataStore) CreateShard(ctx context.Context, shard *metadata.ShardInfo) metadata.MetadataError {
 	m.shards[shard.ShardID] = shard
 	return nil
 }
 
-func (m *MockMetadataStore) GetShard(ctx context.Context, shardID uint64) (*metadata.ShardInfo, error) {
+func (m *MockMetadataStore) GetShard(ctx context.Context, shardID uint64) (*metadata.ShardInfo, metadata.MetadataError) {
 	shard, exists := m.shards[shardID]
 	if !exists {
 		return nil, ErrEntryNotFound
@@ -58,7 +59,7 @@ func (m *MockMetadataStore) GetShard(ctx context.Context, shardID uint64) (*meta
 	return shard, nil
 }
 
-func (m *MockMetadataStore) UpdateShardStatus(ctx context.Context, shardID uint64, status metadata.ShardStatus) error {
+func (m *MockMetadataStore) UpdateShardStatus(ctx context.Context, shardID uint64, status metadata.ShardStatus) metadata.MetadataError {
 	shard, exists := m.shards[shardID]
 	if !exists {
 		return ErrEntryNotFound
@@ -67,12 +68,12 @@ func (m *MockMetadataStore) UpdateShardStatus(ctx context.Context, shardID uint6
 	return nil
 }
 
-func (m *MockMetadataStore) DeleteShard(ctx context.Context, shardID uint64) error {
+func (m *MockMetadataStore) DeleteShard(ctx context.Context, shardID uint64) metadata.MetadataError {
 	delete(m.shards, shardID)
 	return nil
 }
 
-func (m *MockMetadataStore) ListShardsByVolume(ctx context.Context, volumeID string) ([]*metadata.ShardInfo, error) {
+func (m *MockMetadataStore) ListShardsByVolume(ctx context.Context, volumeID string) ([]*metadata.ShardInfo, metadata.MetadataError) {
 	var shards []*metadata.ShardInfo
 	for _, shard := range m.shards {
 		if shard.VolumeID == volumeID {
@@ -82,12 +83,12 @@ func (m *MockMetadataStore) ListShardsByVolume(ctx context.Context, volumeID str
 	return shards, nil
 }
 
-func (m *MockMetadataStore) RegisterVolume(ctx context.Context, volume *metadata.VolumeInfo) error {
+func (m *MockMetadataStore) RegisterVolume(ctx context.Context, volume *metadata.VolumeInfo) metadata.MetadataError {
 	m.volumes[volume.VolumeID] = volume
 	return nil
 }
 
-func (m *MockMetadataStore) GetVolume(ctx context.Context, volumeID string) (*metadata.VolumeInfo, error) {
+func (m *MockMetadataStore) GetVolume(ctx context.Context, volumeID string) (*metadata.VolumeInfo, metadata.MetadataError) {
 	volume, exists := m.volumes[volumeID]
 	if !exists {
 		return nil, ErrEntryNotFound
@@ -95,7 +96,7 @@ func (m *MockMetadataStore) GetVolume(ctx context.Context, volumeID string) (*me
 	return volume, nil
 }
 
-func (m *MockMetadataStore) UpdateVolumePrimary(ctx context.Context, volumeID string, newPrimaryNodeID string) error {
+func (m *MockMetadataStore) UpdateVolumePrimary(ctx context.Context, volumeID string, newPrimaryNodeID string) metadata.MetadataError {
 	volume, exists := m.volumes[volumeID]
 	if !exists {
 		return ErrEntryNotFound
@@ -105,7 +106,7 @@ func (m *MockMetadataStore) UpdateVolumePrimary(ctx context.Context, volumeID st
 	return nil
 }
 
-func (m *MockMetadataStore) ListVolumesByNode(ctx context.Context, nodeID string) ([]*metadata.VolumeInfo, error) {
+func (m *MockMetadataStore) ListVolumesByNode(ctx context.Context, nodeID string) ([]*metadata.VolumeInfo, metadata.MetadataError) {
 	var volumes []*metadata.VolumeInfo
 	for _, v := range m.volumes {
 		if v.NodeID == nodeID {
@@ -115,7 +116,7 @@ func (m *MockMetadataStore) ListVolumesByNode(ctx context.Context, nodeID string
 	return volumes, nil
 }
 
-func (m *MockMetadataStore) AddBackupNode(ctx context.Context, volumeID string, nodeID string) error {
+func (m *MockMetadataStore) AddBackupNode(ctx context.Context, volumeID string, nodeID string) metadata.MetadataError {
 	volume, exists := m.volumes[volumeID]
 	if !exists {
 		return ErrEntryNotFound
@@ -124,7 +125,7 @@ func (m *MockMetadataStore) AddBackupNode(ctx context.Context, volumeID string, 
 	return nil
 }
 
-func (m *MockMetadataStore) RemoveBackupNode(ctx context.Context, volumeID string, nodeID string) error {
+func (m *MockMetadataStore) RemoveBackupNode(ctx context.Context, volumeID string, nodeID string) metadata.MetadataError {
 	volume, exists := m.volumes[volumeID]
 	if !exists {
 		return ErrEntryNotFound
@@ -138,7 +139,7 @@ func (m *MockMetadataStore) RemoveBackupNode(ctx context.Context, volumeID strin
 	return nil
 }
 
-func (m *MockMetadataStore) UnregisterVolume(ctx context.Context, volumeID string) error {
+func (m *MockMetadataStore) UnregisterVolume(ctx context.Context, volumeID string) metadata.MetadataError {
 	delete(m.volumes, volumeID)
 	return nil
 }
@@ -215,6 +216,13 @@ func TestCreateShardWithAutoVolumeSelection(t *testing.T) {
 		metadataStore,
 		"node-1",
 	)
+	volumeManager.AddMountedVolume(context.Background(), &volume.MountedVolume{
+		VolumeID:  "vol-1",
+		MountPath: vol1Path,
+		Device:    "",
+		IsPrimary: true,
+		MountTime: time.Now(),
+	})
 
 	// Manually add mounted volumes to simulate mounted state
 	// We need to use reflection or make the field public for testing

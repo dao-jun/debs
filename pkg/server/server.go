@@ -158,8 +158,8 @@ func ParseErr(err error) pb.Code {
 		return pb.Code_SHARD_FENCED
 	} else if errors.Is(err, shard.ErrNotShardLeader) {
 		return pb.Code_NOT_SHARD_LEADER
+	} else if volume.IsVolumeError(err) {
+		return pb.Code_DEVICE_EXCEPTION
 	}
-	// CONVERT MORE errors
-
 	return pb.Code_OK
 }

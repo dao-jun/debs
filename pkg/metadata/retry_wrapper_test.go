@@ -2,134 +2,133 @@ package metadata
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 )
 
-var _ MetadataStore = (*MockMetadataStore)(nil)
+var _ MetadataStore = (*TestMockMetadataStore)(nil)
 
 // MockMetadataStore is a mock implementation for testing
-type MockMetadataStore struct {
+type TestMockMetadataStore struct {
 	failCount      int
 	currentAttempt int
 }
 
-func (m *MockMetadataStore) RegisterNode(ctx context.Context, info NodeInfo) error {
+func (m *TestMockMetadataStore) RegisterNode(ctx context.Context, info NodeInfo) MetadataError {
 	m.currentAttempt++
 	if m.currentAttempt <= m.failCount {
-		return errors.New("temporary error")
+		return ErrMetadata
 	}
 	return nil
 }
 
-func (m *MockMetadataStore) UnregisterNode(ctx context.Context, nodeID string) error {
+func (m *TestMockMetadataStore) UnregisterNode(ctx context.Context, nodeID string) MetadataError {
 	m.currentAttempt++
 	if m.currentAttempt <= m.failCount {
-		return errors.New("temporary error")
+		return ErrMetadata
 	}
 	return nil
 }
 
-func (m *MockMetadataStore) GenerateShardID(ctx context.Context) (uint64, error) {
+func (m *TestMockMetadataStore) GenerateShardID(ctx context.Context) (uint64, MetadataError) {
 	m.currentAttempt++
 	if m.currentAttempt <= m.failCount {
-		return 0, errors.New("temporary error")
+		return 0, ErrMetadata
 	}
 	return 12345, nil
 }
 
-func (m *MockMetadataStore) CreateShard(ctx context.Context, shard *ShardInfo) error {
+func (m *TestMockMetadataStore) CreateShard(ctx context.Context, shard *ShardInfo) MetadataError {
 	m.currentAttempt++
 	if m.currentAttempt <= m.failCount {
-		return errors.New("temporary error")
+		return ErrMetadata
 	}
 	return nil
 }
 
-func (m *MockMetadataStore) GetShard(ctx context.Context, shardID uint64) (*ShardInfo, error) {
+func (m *TestMockMetadataStore) GetShard(ctx context.Context, shardID uint64) (*ShardInfo, MetadataError) {
 	m.currentAttempt++
 	if m.currentAttempt <= m.failCount {
-		return nil, errors.New("temporary error")
+		return nil, ErrMetadata
 	}
 	return &ShardInfo{ShardID: shardID}, nil
 }
 
-func (m *MockMetadataStore) UpdateShardStatus(ctx context.Context, shardID uint64, status ShardStatus) error {
+func (m *TestMockMetadataStore) UpdateShardStatus(ctx context.Context, shardID uint64, status ShardStatus) MetadataError {
 	m.currentAttempt++
 	if m.currentAttempt <= m.failCount {
-		return errors.New("temporary error")
+		return ErrMetadata
 	}
 	return nil
 }
 
-func (m *MockMetadataStore) DeleteShard(ctx context.Context, shardID uint64) error {
+func (m *TestMockMetadataStore) DeleteShard(ctx context.Context, shardID uint64) MetadataError {
 	m.currentAttempt++
 	if m.currentAttempt <= m.failCount {
-		return errors.New("temporary error")
+		return ErrMetadata
 	}
 	return nil
 }
 
-func (m *MockMetadataStore) RegisterVolume(ctx context.Context, volume *VolumeInfo) error {
+func (m *TestMockMetadataStore) RegisterVolume(ctx context.Context, volume *VolumeInfo) MetadataError {
 	m.currentAttempt++
 	if m.currentAttempt <= m.failCount {
-		return errors.New("temporary error")
+		return ErrMetadata
 	}
 	return nil
 }
 
-func (m *MockMetadataStore) GetVolume(ctx context.Context, volumeID string) (*VolumeInfo, error) {
+func (m *TestMockMetadataStore) GetVolume(ctx context.Context, volumeID string) (*VolumeInfo, MetadataError) {
 	m.currentAttempt++
 	if m.currentAttempt <= m.failCount {
-		return nil, errors.New("temporary error")
+		return nil, ErrMetadata
 	}
 	return &VolumeInfo{VolumeID: volumeID}, nil
 }
 
-func (m *MockMetadataStore) UpdateVolumePrimary(ctx context.Context, volumeID string, newPrimaryNodeID string) error {
+func (m *TestMockMetadataStore) UpdateVolumePrimary(ctx context.Context, volumeID string, newPrimaryNodeID string) MetadataError {
 	m.currentAttempt++
 	if m.currentAttempt <= m.failCount {
-		return errors.New("temporary error")
+		return ErrMetadata
 	}
 	return nil
 }
 
-func (m *MockMetadataStore) ListVolumesByNode(ctx context.Context, nodeID string) ([]*VolumeInfo, error) {
+func (m *TestMockMetadataStore) ListVolumesByNode(ctx context.Context, nodeID string) ([]*VolumeInfo, MetadataError) {
 	m.currentAttempt++
 	if m.currentAttempt <= m.failCount {
-		return nil, errors.New("temporary error")
+		return nil, ErrMetadata
 	}
 	return []*VolumeInfo{{VolumeID: "vol-1"}}, nil
 }
 
-func (m *MockMetadataStore) AddBackupNode(ctx context.Context, volumeID string, nodeID string) error {
+func (m *TestMockMetadataStore) AddBackupNode(ctx context.Context, volumeID string, nodeID string) MetadataError {
 	m.currentAttempt++
 	if m.currentAttempt <= m.failCount {
-		return errors.New("temporary error")
+		return ErrMetadata
 	}
 	return nil
 }
 
-func (m *MockMetadataStore) RemoveBackupNode(ctx context.Context, volumeID string, nodeID string) error {
+func (m *TestMockMetadataStore) RemoveBackupNode(ctx context.Context, volumeID string, nodeID string) MetadataError {
 	m.currentAttempt++
 	if m.currentAttempt <= m.failCount {
-		return errors.New("temporary error")
+		return ErrMetadata
 	}
 	return nil
 }
 
-func (m *MockMetadataStore) UnregisterVolume(ctx context.Context, volumeID string) error {
+func (m *TestMockMetadataStore) UnregisterVolume(ctx context.Context, volumeID string) MetadataError {
 	m.currentAttempt++
 	if m.currentAttempt <= m.failCount {
-		return errors.New("temporary error")
+		return ErrMetadata
 	}
 	return nil
 }
 
 func TestRetryWrapperSuccess(t *testing.T) {
 	// Test that operations succeed on first attempt
-	mock := &MockMetadataStore{failCount: 0}
+	mock := &TestMockMetadataStore{failCount: 0}
 	config := &RetryConfig{
 		MaxElapsedTime:  1 * time.Second,
 		InitialInterval: 10 * time.Millisecond,
@@ -151,7 +150,7 @@ func TestRetryWrapperSuccess(t *testing.T) {
 
 func TestRetryWrapperRetrySuccess(t *testing.T) {
 	// Test that operations succeed after retries
-	mock := &MockMetadataStore{failCount: 2}
+	mock := &TestMockMetadataStore{failCount: 2}
 	config := &RetryConfig{
 		MaxElapsedTime:  2 * time.Second,
 		InitialInterval: 10 * time.Millisecond,
@@ -174,7 +173,7 @@ func TestRetryWrapperRetrySuccess(t *testing.T) {
 
 func TestRetryWrapperFailure(t *testing.T) {
 	// Test that operations fail after max retries
-	mock := &MockMetadataStore{failCount: 100} // Always fail
+	mock := &TestMockMetadataStore{failCount: 100} // Always fail
 	config := &RetryConfig{
 		MaxElapsedTime:  500 * time.Millisecond, // Short timeout for test
 		InitialInterval: 10 * time.Millisecond,
@@ -193,7 +192,7 @@ func TestRetryWrapperFailure(t *testing.T) {
 
 func TestRetryWrapperContextCancellation(t *testing.T) {
 	// Test that operations respect context cancellation
-	mock := &MockMetadataStore{failCount: 100} // Always fail
+	mock := &TestMockMetadataStore{failCount: 100} // Always fail
 	config := &RetryConfig{
 		MaxElapsedTime:  10 * time.Second,
 		InitialInterval: 100 * time.Millisecond,
@@ -280,7 +279,7 @@ func TestRetryWrapperAllMethods(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mock := &MockMetadataStore{failCount: tt.failCount}
+			mock := &TestMockMetadataStore{failCount: tt.failCount}
 			wrapper := NewRetryWrapper(mock, config)
 
 			err := tt.operation(wrapper)
@@ -312,7 +311,7 @@ func TestDefaultRetryConfig(t *testing.T) {
 
 func TestRetryWrapperWithNilConfig(t *testing.T) {
 	// Test that nil config uses defaults
-	mock := &MockMetadataStore{failCount: 0}
+	mock := &TestMockMetadataStore{failCount: 0}
 	wrapper := NewRetryWrapper(mock, nil)
 
 	if wrapper.config.MaxElapsedTime != 10*time.Second {

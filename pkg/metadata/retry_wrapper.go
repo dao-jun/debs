@@ -59,7 +59,7 @@ func (r *RetryWrapper) newBackoff() backoff.BackOff {
 }
 
 // RegisterNode registers a node with the metadata store with retry
-func (r *RetryWrapper) RegisterNode(ctx context.Context, info NodeInfo) error {
+func (r *RetryWrapper) RegisterNode(ctx context.Context, info NodeInfo) MetadataError {
 	operation := func() error {
 		return r.store.RegisterNode(ctx, info)
 	}
@@ -67,14 +67,14 @@ func (r *RetryWrapper) RegisterNode(ctx context.Context, info NodeInfo) error {
 }
 
 // UnregisterNode unregisters a node with the metadata store with retry
-func (r *RetryWrapper) UnregisterNode(ctx context.Context, nodeID string) error {
+func (r *RetryWrapper) UnregisterNode(ctx context.Context, nodeID string) MetadataError {
 	return backoff.Retry(func() error {
 		return r.store.UnregisterNode(ctx, nodeID)
 	}, backoff.WithContext(r.newBackoff(), ctx))
 }
 
 // GenerateShardID generates a globally unique, incrementing shard ID with retry
-func (r *RetryWrapper) GenerateShardID(ctx context.Context) (uint64, error) {
+func (r *RetryWrapper) GenerateShardID(ctx context.Context) (uint64, MetadataError) {
 	var shardID uint64
 	operation := func() error {
 		var err error
@@ -87,7 +87,7 @@ func (r *RetryWrapper) GenerateShardID(ctx context.Context) (uint64, error) {
 }
 
 // CreateShard registers a new shard in the metadata store with retry
-func (r *RetryWrapper) CreateShard(ctx context.Context, shard *ShardInfo) error {
+func (r *RetryWrapper) CreateShard(ctx context.Context, shard *ShardInfo) MetadataError {
 	operation := func() error {
 		return r.store.CreateShard(ctx, shard)
 	}
@@ -96,7 +96,7 @@ func (r *RetryWrapper) CreateShard(ctx context.Context, shard *ShardInfo) error 
 }
 
 // GetShard retrieves shard information by shard ID with retry
-func (r *RetryWrapper) GetShard(ctx context.Context, shardID uint64) (*ShardInfo, error) {
+func (r *RetryWrapper) GetShard(ctx context.Context, shardID uint64) (*ShardInfo, MetadataError) {
 	var shardInfo *ShardInfo
 	operation := func() error {
 		var err error
@@ -109,7 +109,7 @@ func (r *RetryWrapper) GetShard(ctx context.Context, shardID uint64) (*ShardInfo
 }
 
 // UpdateShardStatus updates the status of a shard with retry
-func (r *RetryWrapper) UpdateShardStatus(ctx context.Context, shardID uint64, status ShardStatus) error {
+func (r *RetryWrapper) UpdateShardStatus(ctx context.Context, shardID uint64, status ShardStatus) MetadataError {
 	operation := func() error {
 		return r.store.UpdateShardStatus(ctx, shardID, status)
 	}
@@ -118,7 +118,7 @@ func (r *RetryWrapper) UpdateShardStatus(ctx context.Context, shardID uint64, st
 }
 
 // DeleteShard removes shard metadata with retry
-func (r *RetryWrapper) DeleteShard(ctx context.Context, shardID uint64) error {
+func (r *RetryWrapper) DeleteShard(ctx context.Context, shardID uint64) MetadataError {
 	operation := func() error {
 		return r.store.DeleteShard(ctx, shardID)
 	}
@@ -127,7 +127,7 @@ func (r *RetryWrapper) DeleteShard(ctx context.Context, shardID uint64) error {
 }
 
 // RegisterVolume registers a volume with its primary node with retry
-func (r *RetryWrapper) RegisterVolume(ctx context.Context, volume *VolumeInfo) error {
+func (r *RetryWrapper) RegisterVolume(ctx context.Context, volume *VolumeInfo) MetadataError {
 	operation := func() error {
 		return r.store.RegisterVolume(ctx, volume)
 	}
@@ -136,7 +136,7 @@ func (r *RetryWrapper) RegisterVolume(ctx context.Context, volume *VolumeInfo) e
 }
 
 // GetVolume retrieves volume information by volume ID with retry
-func (r *RetryWrapper) GetVolume(ctx context.Context, volumeID string) (*VolumeInfo, error) {
+func (r *RetryWrapper) GetVolume(ctx context.Context, volumeID string) (*VolumeInfo, MetadataError) {
 	var volumeInfo *VolumeInfo
 	operation := func() error {
 		var err error
@@ -149,7 +149,7 @@ func (r *RetryWrapper) GetVolume(ctx context.Context, volumeID string) (*VolumeI
 }
 
 // UpdateVolumePrimary updates the primary node for a volume (for failover) with retry
-func (r *RetryWrapper) UpdateVolumePrimary(ctx context.Context, volumeID string, newPrimaryNodeID string) error {
+func (r *RetryWrapper) UpdateVolumePrimary(ctx context.Context, volumeID string, newPrimaryNodeID string) MetadataError {
 	operation := func() error {
 		return r.store.UpdateVolumePrimary(ctx, volumeID, newPrimaryNodeID)
 	}
@@ -158,7 +158,7 @@ func (r *RetryWrapper) UpdateVolumePrimary(ctx context.Context, volumeID string,
 }
 
 // ListVolumesByNode lists all volumes attached to a specific node with retry
-func (r *RetryWrapper) ListVolumesByNode(ctx context.Context, nodeID string) ([]*VolumeInfo, error) {
+func (r *RetryWrapper) ListVolumesByNode(ctx context.Context, nodeID string) ([]*VolumeInfo, MetadataError) {
 	var volumes []*VolumeInfo
 	operation := func() error {
 		var err error
@@ -171,7 +171,7 @@ func (r *RetryWrapper) ListVolumesByNode(ctx context.Context, nodeID string) ([]
 }
 
 // AddBackupNode adds a backup node to a volume with retry
-func (r *RetryWrapper) AddBackupNode(ctx context.Context, volumeID string, nodeID string) error {
+func (r *RetryWrapper) AddBackupNode(ctx context.Context, volumeID string, nodeID string) MetadataError {
 	operation := func() error {
 		return r.store.AddBackupNode(ctx, volumeID, nodeID)
 	}
@@ -180,7 +180,7 @@ func (r *RetryWrapper) AddBackupNode(ctx context.Context, volumeID string, nodeI
 }
 
 // RemoveBackupNode removes a backup node from a volume with retry
-func (r *RetryWrapper) RemoveBackupNode(ctx context.Context, volumeID string, nodeID string) error {
+func (r *RetryWrapper) RemoveBackupNode(ctx context.Context, volumeID string, nodeID string) MetadataError {
 	operation := func() error {
 		return r.store.RemoveBackupNode(ctx, volumeID, nodeID)
 	}
@@ -189,7 +189,7 @@ func (r *RetryWrapper) RemoveBackupNode(ctx context.Context, volumeID string, no
 }
 
 // UnregisterVolume removes volume metadata with retry
-func (r *RetryWrapper) UnregisterVolume(ctx context.Context, volumeID string) error {
+func (r *RetryWrapper) UnregisterVolume(ctx context.Context, volumeID string) MetadataError {
 	operation := func() error {
 		return r.store.UnregisterVolume(ctx, volumeID)
 	}
