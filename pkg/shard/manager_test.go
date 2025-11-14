@@ -158,11 +158,11 @@ func (m *MockVolumeProvider) DescribeVolume(ctx context.Context, volumeID string
 	return nil, nil
 }
 
-func (m *MockVolumeProvider) AttachVolume(ctx context.Context, volumeID, instanceID, device string) error {
+func (m *MockVolumeProvider) AttachVolume(ctx context.Context, volumeID, nodeId, device string) error {
 	return nil
 }
 
-func (m *MockVolumeProvider) DetachVolume(ctx context.Context, volumeID, instanceID string, force bool) error {
+func (m *MockVolumeProvider) DetachVolume(ctx context.Context, volumeID, nodeId string, force bool) error {
 	return nil
 }
 
@@ -170,11 +170,11 @@ func (m *MockVolumeProvider) WaitForVolumeAvailable(ctx context.Context, volumeI
 	return nil
 }
 
-func (m *MockVolumeProvider) WaitForVolumeAttached(ctx context.Context, volumeID, instanceID string) error {
+func (m *MockVolumeProvider) WaitForVolumeAttached(ctx context.Context, volumeID, nodeId string) error {
 	return nil
 }
 
-func (m *MockVolumeProvider) WaitForVolumeDetached(ctx context.Context, volumeID, instanceID string) error {
+func (m *MockVolumeProvider) WaitForVolumeDetached(ctx context.Context, volumeID, nodeId string) error {
 	return nil
 }
 
@@ -214,7 +214,6 @@ func TestCreateShardWithAutoVolumeSelection(t *testing.T) {
 		&MockVolumeProvider{},
 		metadataStore,
 		"node-1",
-		"instance-1",
 	)
 
 	// Manually add mounted volumes to simulate mounted state
@@ -260,7 +259,6 @@ func TestSelectBestVolumeLogic(t *testing.T) {
 		&MockVolumeProvider{},
 		metadataStore,
 		"node-1",
-		"instance-1",
 	)
 
 	// Create shard manager
@@ -294,7 +292,6 @@ func TestCreateShardWithMetadata(t *testing.T) {
 		&MockVolumeProvider{},
 		metadataStore,
 		"node-1",
-		"instance-1",
 	)
 
 	// Create shard manager

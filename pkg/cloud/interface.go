@@ -29,10 +29,10 @@ type Volume struct {
 
 // VolumeAttachment represents a volume attachment to an instance
 type VolumeAttachment struct {
-	VolumeID   string
-	InstanceID string
-	Device     string
-	State      string
+	VolumeID string
+	NodeId   string
+	Device   string
+	State    string
 }
 
 // VolumeProvider is the interface for cloud volume operations
@@ -48,19 +48,19 @@ type VolumeProvider interface {
 	DescribeVolume(ctx context.Context, volumeID string) (*Volume, error)
 
 	// AttachVolume attaches a volume to an instance
-	AttachVolume(ctx context.Context, volumeID string, instanceID string, device string) error
+	AttachVolume(ctx context.Context, volumeID string, nodeId string, device string) error
 
 	// DetachVolume detaches a volume from an instance
-	DetachVolume(ctx context.Context, volumeID string, instanceID string, force bool) error
+	DetachVolume(ctx context.Context, volumeID string, nodeId string, force bool) error
 
 	// WaitForVolumeAvailable waits until the volume is in available state
 	WaitForVolumeAvailable(ctx context.Context, volumeID string) error
 
 	// WaitForVolumeAttached waits until the volume is attached to an instance
-	WaitForVolumeAttached(ctx context.Context, volumeID string, instanceID string) error
+	WaitForVolumeAttached(ctx context.Context, volumeID string, nodeId string) error
 
 	// WaitForVolumeDetached waits until the volume is detached from an instance
-	WaitForVolumeDetached(ctx context.Context, volumeID string, instanceID string) error
+	WaitForVolumeDetached(ctx context.Context, volumeID string, nodeId string) error
 
 	// ListVolumes lists all volumes
 	ListVolumes(ctx context.Context) ([]*Volume, error)

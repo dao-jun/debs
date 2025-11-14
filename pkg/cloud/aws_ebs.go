@@ -111,10 +111,10 @@ func (p *AWSEBSProvider) DescribeVolume(ctx context.Context, volumeID string) (*
 
 	for _, att := range vol.Attachments {
 		volume.Attachments = append(volume.Attachments, VolumeAttachment{
-			VolumeID:   aws.ToString(att.VolumeId),
-			InstanceID: aws.ToString(att.InstanceId),
-			Device:     aws.ToString(att.Device),
-			State:      string(att.State),
+			VolumeID: aws.ToString(att.VolumeId),
+			NodeId:   aws.ToString(att.InstanceId),
+			Device:   aws.ToString(att.Device),
+			State:    string(att.State),
 		})
 	}
 
@@ -122,32 +122,32 @@ func (p *AWSEBSProvider) DescribeVolume(ctx context.Context, volumeID string) (*
 }
 
 // AttachVolume attaches an EBS volume to an EC2 instance
-func (p *AWSEBSProvider) AttachVolume(ctx context.Context, volumeID string, instanceID string, device string) error {
+func (p *AWSEBSProvider) AttachVolume(ctx context.Context, volumeID string, nodeId string, device string) error {
 	input := &ec2.AttachVolumeInput{
 		VolumeId:   aws.String(volumeID),
-		InstanceId: aws.String(instanceID),
+		InstanceId: aws.String(nodeId),
 		Device:     aws.String(device),
 	}
 
 	_, err := p.client.AttachVolume(ctx, input)
 	if err != nil {
-		return fmt.Errorf("failed to attach volume %s to instance %s: %w", volumeID, instanceID, err)
+		return fmt.Errorf("failed to attach volume %s to instance %s: %w", volumeID, nodeId, err)
 	}
 
 	return nil
 }
 
 // DetachVolume detaches an EBS volume from an EC2 instance
-func (p *AWSEBSProvider) DetachVolume(ctx context.Context, volumeID string, instanceID string, force bool) error {
+func (p *AWSEBSProvider) DetachVolume(ctx context.Context, volumeID string, nodeId string, force bool) error {
 	input := &ec2.DetachVolumeInput{
 		VolumeId:   aws.String(volumeID),
-		InstanceId: aws.String(instanceID),
+		InstanceId: aws.String(nodeId),
 		Force:      aws.Bool(force),
 	}
 
 	_, err := p.client.DetachVolume(ctx, input)
 	if err != nil {
-		return fmt.Errorf("failed to detach volume %s from instance %s: %w", volumeID, instanceID, err)
+		return fmt.Errorf("failed to detach volume %s from instance %s: %w", volumeID, nodeId, err)
 	}
 
 	return nil
@@ -170,7 +170,7 @@ func (p *AWSEBSProvider) WaitForVolumeAvailable(ctx context.Context, volumeID st
 }
 
 // WaitForVolumeAttached waits until the volume is attached to an instance
-func (p *AWSEBSProvider) WaitForVolumeAttached(ctx context.Context, volumeID string, instanceID string) error {
+func (p *AWSEBSProvider) WaitForVolumeAttached(ctx context.Context, volumeID string, nodeId string) error {
 	waiter := ec2.NewVolumeInUseWaiter(p.client)
 
 	input := &ec2.DescribeVolumesInput{
@@ -186,7 +186,7 @@ func (p *AWSEBSProvider) WaitForVolumeAttached(ctx context.Context, volumeID str
 }
 
 // WaitForVolumeDetached waits until the volume is detached from an instance
-func (p *AWSEBSProvider) WaitForVolumeDetached(ctx context.Context, volumeID string, instanceID string) error {
+func (p *AWSEBSProvider) WaitForVolumeDetached(ctx context.Context, volumeID string, nodeId string) error {
 	waiter := ec2.NewVolumeAvailableWaiter(p.client)
 
 	input := &ec2.DescribeVolumesInput{
@@ -224,10 +224,10 @@ func (p *AWSEBSProvider) ListVolumes(ctx context.Context) ([]*Volume, error) {
 
 		for _, att := range vol.Attachments {
 			volume.Attachments = append(volume.Attachments, VolumeAttachment{
-				VolumeID:   aws.ToString(att.VolumeId),
-				InstanceID: aws.ToString(att.InstanceId),
-				Device:     aws.ToString(att.Device),
-				State:      string(att.State),
+				VolumeID: aws.ToString(att.VolumeId),
+				NodeId:   aws.ToString(att.InstanceId),
+				Device:   aws.ToString(att.Device),
+				State:    string(att.State),
 			})
 		}
 

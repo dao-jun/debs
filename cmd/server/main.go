@@ -28,9 +28,6 @@ func main() {
 	if nodeID := os.Getenv("NODE_ID"); nodeID != "" {
 		cfg.Node.NodeID = nodeID
 	}
-	if instanceID := os.Getenv("INSTANCE_ID"); instanceID != "" {
-		cfg.Node.InstanceID = instanceID
-	}
 	if region := os.Getenv("AWS_REGION"); region != "" {
 		cfg.Cloud.Region = region
 	}
@@ -65,7 +62,6 @@ func main() {
 		volumeProvider,
 		metadataStore,
 		cfg.Node.NodeID,
-		cfg.Node.InstanceID,
 	)
 
 	// Initialize shard manager

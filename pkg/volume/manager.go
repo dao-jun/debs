@@ -31,7 +31,6 @@ type VolumeManager struct {
 	provider       cloud.VolumeProvider
 	metadataStore  metadata.MetadataStore
 	nodeID         string
-	instanceID     string
 	mountedVolumes map[string]*MountedVolume // volumeID -> MountedVolume
 }
 
@@ -49,13 +48,11 @@ func NewVolumeManager(
 	provider cloud.VolumeProvider,
 	metadataStore metadata.MetadataStore,
 	nodeID string,
-	instanceID string,
 ) *VolumeManager {
 	return &VolumeManager{
 		provider:       provider,
 		metadataStore:  metadataStore,
 		nodeID:         nodeID,
-		instanceID:     instanceID,
 		mountedVolumes: make(map[string]*MountedVolume),
 	}
 }
@@ -72,13 +69,13 @@ func (vm *VolumeManager) MountVolume(ctx context.Context, volumeID string, devic
 	}
 
 	// Attach the volume to this instance
-	err := vm.provider.AttachVolume(ctx, volumeID, vm.instanceID, device)
+	err := vm.provider.AttachVolume(ctx, volumeID, vm.nodeID, device)
 	if err != nil {
 		return ErrAttachVolume
 	}
 
 	// Wait for the volume to be attached
-	err = vm.provider.WaitForVolumeAttached(ctx, volumeID, vm.instanceID)
+	err = vm.provider.WaitForVolumeAttached(ctx, volumeID, vm.nodeID)
 	if err != nil {
 		return ErrAttachVolume
 	}
@@ -170,14 +167,14 @@ func (vm *VolumeManager) UnmountVolume(ctx context.Context, volumeID string, for
 	}
 
 	// Detach the volume
-	err := vm.provider.DetachVolume(ctx, volumeID, vm.instanceID, force)
+	err := vm.provider.DetachVolume(ctx, volumeID, vm.nodeID, force)
 	if err != nil {
 		return ErrDetachVolume
 	}
 
 	// Wait for the volume to be detached
 	if !force {
-		err = vm.provider.WaitForVolumeDetached(ctx, volumeID, vm.instanceID)
+		err = vm.provider.WaitForVolumeDetached(ctx, volumeID, vm.nodeID)
 		if err != nil {
 			return ErrDetachVolume
 		}

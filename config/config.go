@@ -30,8 +30,7 @@ type MetadataConfig struct {
 
 // NodeConfig holds the node configuration
 type NodeConfig struct {
-	NodeID     string `yaml:"node_id"`     // Unique identifier for this node
-	InstanceID string `yaml:"instance_id"` // Cloud instance ID (e.g., EC2 instance ID)
+	NodeID string `yaml:"node_id"` // Unique identifier for this node, as cloud EC2 instance ID.
 }
 
 // DefaultConfig returns a default configuration
@@ -52,8 +51,7 @@ func DefaultConfig() *Config {
 			Options:   make(map[string]string),
 		},
 		Node: NodeConfig{
-			NodeID:     "node-1",
-			InstanceID: "",
+			NodeID: "node-1",
 		},
 	}
 }
