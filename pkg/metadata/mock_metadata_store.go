@@ -56,15 +56,6 @@ func (m *MockMetadataStore) GetShard(ctx context.Context, shardID uint64) (*Shar
 	return shard, nil
 }
 
-func (m *MockMetadataStore) UpdateShardStatus(ctx context.Context, shardID uint64, status ShardStatus) MetadataError {
-	shardInfo, exists := m.shards[shardID]
-	if !exists {
-		return ErrNotFound
-	}
-	shardInfo.Status = status
-	return nil
-}
-
 func (m *MockMetadataStore) DeleteShard(ctx context.Context, shardID uint64) MetadataError {
 	delete(m.shards, shardID)
 	return nil
@@ -88,15 +79,14 @@ func (m *MockMetadataStore) UpdateVolumePrimary(ctx context.Context, volumeID st
 	if !exists {
 		return ErrNotFound
 	}
-	volume.NodeID = newPrimaryNodeID
-	volume.IsPrimary = true
+	volume.PrimaryNode = newPrimaryNodeID
 	return nil
 }
 
 func (m *MockMetadataStore) ListVolumesByNode(ctx context.Context, nodeID string) ([]*VolumeInfo, MetadataError) {
 	var volumes []*VolumeInfo
 	for _, v := range m.volumes {
-		if v.NodeID == nodeID {
+		if v.PrimaryNode == nodeID {
 			volumes = append(volumes, v)
 		}
 	}
@@ -108,7 +98,7 @@ func (m *MockMetadataStore) AddBackupNode(ctx context.Context, volumeID string, 
 	if !exists {
 		return ErrNotFound
 	}
-	volume.BackupNodes = append(volume.BackupNodes, nodeID)
+	volume.Nodes = append(volume.Nodes, nodeID)
 	return nil
 }
 
@@ -117,9 +107,9 @@ func (m *MockMetadataStore) RemoveBackupNode(ctx context.Context, volumeID strin
 	if !exists {
 		return ErrNotFound
 	}
-	for i, n := range volume.BackupNodes {
+	for i, n := range volume.Nodes {
 		if n == nodeID {
-			volume.BackupNodes = append(volume.BackupNodes[:i], volume.BackupNodes[i+1:]...)
+			volume.Nodes = append(volume.Nodes[:i], volume.Nodes[i+1:]...)
 			break
 		}
 	}

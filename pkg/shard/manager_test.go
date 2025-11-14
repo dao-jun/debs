@@ -59,15 +59,6 @@ func (m *MockMetadataStore) GetShard(ctx context.Context, shardID uint64) (*meta
 	return shard, nil
 }
 
-func (m *MockMetadataStore) UpdateShardStatus(ctx context.Context, shardID uint64, status metadata.ShardStatus) metadata.MetadataError {
-	shard, exists := m.shards[shardID]
-	if !exists {
-		return ErrEntryNotFound
-	}
-	shard.Status = status
-	return nil
-}
-
 func (m *MockMetadataStore) DeleteShard(ctx context.Context, shardID uint64) metadata.MetadataError {
 	delete(m.shards, shardID)
 	return nil
@@ -101,15 +92,14 @@ func (m *MockMetadataStore) UpdateVolumePrimary(ctx context.Context, volumeID st
 	if !exists {
 		return ErrEntryNotFound
 	}
-	volume.NodeID = newPrimaryNodeID
-	volume.IsPrimary = true
+	volume.PrimaryNode = newPrimaryNodeID
 	return nil
 }
 
 func (m *MockMetadataStore) ListVolumesByNode(ctx context.Context, nodeID string) ([]*metadata.VolumeInfo, metadata.MetadataError) {
 	var volumes []*metadata.VolumeInfo
 	for _, v := range m.volumes {
-		if v.NodeID == nodeID {
+		if v.PrimaryNode == nodeID {
 			volumes = append(volumes, v)
 		}
 	}
@@ -121,7 +111,7 @@ func (m *MockMetadataStore) AddBackupNode(ctx context.Context, volumeID string, 
 	if !exists {
 		return ErrEntryNotFound
 	}
-	volume.BackupNodes = append(volume.BackupNodes, nodeID)
+	volume.Nodes = append(volume.Nodes, nodeID)
 	return nil
 }
 
@@ -130,9 +120,9 @@ func (m *MockMetadataStore) RemoveBackupNode(ctx context.Context, volumeID strin
 	if !exists {
 		return ErrEntryNotFound
 	}
-	for i, n := range volume.BackupNodes {
+	for i, n := range volume.Nodes {
 		if n == nodeID {
-			volume.BackupNodes = append(volume.BackupNodes[:i], volume.BackupNodes[i+1:]...)
+			volume.Nodes = append(volume.Nodes[:i], volume.Nodes[i+1:]...)
 			break
 		}
 	}
@@ -216,13 +206,16 @@ func TestCreateShardWithAutoVolumeSelection(t *testing.T) {
 		metadataStore,
 		"node-1",
 	)
+	if err = volumeManager.Start(context.Background()); err != nil {
+		t.Fatalf("Failed to start volume manager: %v", err)
+	}
+
 	volumeManager.AddMountedVolume(context.Background(), &volume.MountedVolume{
 		VolumeID:  "vol-1",
 		MountPath: vol1Path,
-		Device:    "",
-		IsPrimary: true,
 		MountTime: time.Now(),
-	})
+		IsPrimary: true,
+	}, []string{"node-1"})
 
 	// Manually add mounted volumes to simulate mounted state
 	// We need to use reflection or make the field public for testing
@@ -268,7 +261,9 @@ func TestSelectBestVolumeLogic(t *testing.T) {
 		metadataStore,
 		"node-1",
 	)
-
+	if err = volumeManager.Start(context.Background()); err != nil {
+		t.Fatalf("Failed to start volume manager: %v", err)
+	}
 	// Create shard manager
 	shardManager := NewShardManager(volumeManager, metadataStore)
 
@@ -301,7 +296,9 @@ func TestCreateShardWithMetadata(t *testing.T) {
 		metadataStore,
 		"node-1",
 	)
-
+	if err = volumeManager.Start(context.Background()); err != nil {
+		t.Fatalf("Failed to start volume manager: %v", err)
+	}
 	// Create shard manager
 	_ = NewShardManager(volumeManager, metadataStore)
 
@@ -315,7 +312,6 @@ func TestCreateShardWithMetadata(t *testing.T) {
 		ShardID:  1,
 		VolumeID: "vol-1",
 		ClientID: "client-1",
-		Status:   metadata.ShardStatusActive,
 	}
 	err = metadataStore.CreateShard(ctx, shardInfo)
 	if err != nil {
@@ -341,7 +337,6 @@ func TestCreateShardWithMetadata(t *testing.T) {
 		ShardID:  2,
 		VolumeID: "vol-2",
 		ClientID: "client-1",
-		Status:   metadata.ShardStatusActive,
 	}
 	err = metadataStore.CreateShard(ctx, shardInfo2)
 	if err != nil {
@@ -366,60 +361,5 @@ func TestCreateShardWithMetadata(t *testing.T) {
 
 	if len(shards) != 1 {
 		t.Errorf("Expected 1 shard on vol-2, got %d", len(shards))
-	}
-}
-
-func TestActiveShardCounting(t *testing.T) {
-	// Create mock metadata store
-	metadataStore := NewMockMetadataStore()
-
-	ctx := context.Background()
-
-	// Add multiple shards with different statuses
-	shards := []*metadata.ShardInfo{
-		{ShardID: 1, VolumeID: "vol-1", ClientID: "client-1", Status: metadata.ShardStatusActive},
-		{ShardID: 2, VolumeID: "vol-1", ClientID: "client-1", Status: metadata.ShardStatusActive},
-		{ShardID: 3, VolumeID: "vol-1", ClientID: "client-1", Status: metadata.ShardStatusReadOnly},
-		{ShardID: 4, VolumeID: "vol-2", ClientID: "client-1", Status: metadata.ShardStatusActive},
-	}
-
-	for _, shard := range shards {
-		if err := metadataStore.CreateShard(ctx, shard); err != nil {
-			t.Fatalf("Failed to create shard: %v", err)
-		}
-	}
-
-	// Count active shards on vol-1
-	vol1Shards, err := metadataStore.ListShardsByVolume(ctx, "vol-1")
-	if err != nil {
-		t.Fatalf("Failed to list shards: %v", err)
-	}
-
-	activeCount := 0
-	for _, shard := range vol1Shards {
-		if shard.Status == metadata.ShardStatusActive {
-			activeCount++
-		}
-	}
-
-	if activeCount != 2 {
-		t.Errorf("Expected 2 active shards on vol-1, got %d", activeCount)
-	}
-
-	// Count active shards on vol-2
-	vol2Shards, err := metadataStore.ListShardsByVolume(ctx, "vol-2")
-	if err != nil {
-		t.Fatalf("Failed to list shards: %v", err)
-	}
-
-	activeCount = 0
-	for _, shard := range vol2Shards {
-		if shard.Status == metadata.ShardStatusActive {
-			activeCount++
-		}
-	}
-
-	if activeCount != 1 {
-		t.Errorf("Expected 1 active shard on vol-2, got %d", activeCount)
 	}
 }

@@ -4,15 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"golang.org/x/sys/unix"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/debs/debs/pkg/cloud"
 	"github.com/debs/debs/pkg/metadata"
+	"golang.org/x/sys/unix"
 )
 
 var ErrVolumeNotMounted = errors.New("volume is not mounted")
@@ -24,6 +24,7 @@ var ErrEnsureFilesystem = errors.New("failed to ensure filesystem")
 var ErrNotMounted = errors.New("not mounted")
 var ErrVolumeStats = errors.New("failed to get volume stats")
 var ErrNoEnoughVolume = errors.New("not enough volume")
+var ErrVmNotStarted = errors.New("vm not started")
 
 func IsVolumeError(err error) bool {
 	if err == nil {
@@ -37,7 +38,8 @@ func IsVolumeError(err error) bool {
 		errors.Is(err, ErrEnsureFilesystem) ||
 		errors.Is(err, ErrNotMounted) ||
 		errors.Is(err, ErrVolumeStats) ||
-		errors.Is(err, ErrNoEnoughVolume)
+		errors.Is(err, ErrNoEnoughVolume) ||
+		errors.Is(err, ErrVmNotStarted)
 }
 
 // VolumeManager manages EBS volumes on the local node
@@ -47,13 +49,13 @@ type VolumeManager struct {
 	metadataStore  metadata.MetadataStore
 	nodeID         string
 	mountedVolumes map[string]*MountedVolume // volumeID -> MountedVolume
+	started        atomic.Bool
 }
 
 // MountedVolume represents a volume mounted on this node
 type MountedVolume struct {
 	VolumeID  string
 	MountPath string
-	Device    string
 	IsPrimary bool
 	MountTime time.Time
 }
@@ -69,189 +71,69 @@ func NewVolumeManager(
 		metadataStore:  metadataStore,
 		nodeID:         nodeID,
 		mountedVolumes: make(map[string]*MountedVolume),
+		started:        atomic.Bool{},
 	}
 }
 
-func (vm *VolumeManager) AddMountedVolume(ctx context.Context, v *MountedVolume) error {
-	var volumeID = v.VolumeID
-	vm.mountedVolumes[volumeID] = v
-
-	// TODO
-	//volumeInfo, err := vm.metadataStore.GetVolume(ctx, volumeID)
-	//if err != nil {
-	//	// If volume doesn't exist in metadata, register it
-	//	volumeInfo = &metadata.VolumeInfo{
-	//		VolumeID:    volumeID,
-	//		NodeID:      vm.nodeID,
-	//		IsPrimary:   false,
-	//		MountPath:   v.MountPath,
-	//		BackupNodes: append(volumeInfo.BackupNodes, vm.nodeID),
-	//	}
-	//	if err = vm.metadataStore.RegisterVolume(ctx, volumeInfo); err != nil {
-	//		return metadata.ErrMetadata
-	//	}
-	//}
-	return nil
-}
-
-// MountVolume mounts an EBS volume to the node
-// The volume is mounted at /{volumeID}
-func (vm *VolumeManager) MountVolume(ctx context.Context, volumeID string, device string, isPrimary bool) error {
+func (vm *VolumeManager) Start(ctx context.Context) error {
 	vm.mu.Lock()
 	defer vm.mu.Unlock()
 
-	// Check if already mounted
-	if _, exists := vm.mountedVolumes[volumeID]; exists {
+	if vm.started.Load() {
+		return nil
+	}
+
+	volumes, err := vm.metadataStore.ListVolumesByNode(ctx, vm.nodeID)
+	if err != nil {
+		return err
+	}
+	for _, volume := range volumes {
+		vm.mountedVolumes[volume.VolumeID] = &MountedVolume{
+			VolumeID:  volume.VolumeID,
+			MountPath: volume.MountPath,
+			IsPrimary: volume.PrimaryNode == vm.nodeID,
+		}
+	}
+	vm.started.Store(true)
+	return nil
+}
+
+// AddMountedVolume is an admin interface to save a mounted volume.
+func (vm *VolumeManager) AddMountedVolume(ctx context.Context, v *MountedVolume, nodes []string) error {
+	vm.mu.Lock()
+	defer vm.mu.Unlock()
+
+	if !vm.started.Load() {
+		return ErrVmNotStarted
+	}
+
+	var volumeID = v.VolumeID
+	_, err := vm.metadataStore.GetVolume(ctx, volumeID)
+	if !errors.Is(err, metadata.ErrNotFound) {
 		return ErrVolumeAlreadyMounted
 	}
 
-	// Attach the volume to this instance
-	err := vm.provider.AttachVolume(ctx, volumeID, vm.nodeID, device)
-	if err != nil {
-		return ErrAttachVolume
+	err = vm.metadataStore.RegisterVolume(ctx, &metadata.VolumeInfo{
+		VolumeID:    volumeID,
+		MountPath:   v.MountPath,
+		Nodes:       nodes,
+		PrimaryNode: vm.nodeID,
+	})
+	if err == nil {
+		vm.mountedVolumes[volumeID] = v
 	}
 
-	// Wait for the volume to be attached
-	err = vm.provider.WaitForVolumeAttached(ctx, volumeID, vm.nodeID)
-	if err != nil {
-		return ErrAttachVolume
-	}
-
-	// Wait for device to appear in the system
-	if err := vm.waitForDevice(device, 30*time.Second); err != nil {
-		return err
-	}
-
-	// Create mount point
-	mountPath := fmt.Sprintf("/%s", volumeID)
-	if err := os.MkdirAll(mountPath, 0755); err != nil {
-		return ErrAttachVolume
-	}
-
-	// Check if the device has a filesystem, if not create one
-	if err := vm.ensureFilesystem(device); err != nil {
-		return ErrEnsureFilesystem
-	}
-
-	// Mount the volume
-	mountOptions := "rw,noatime"
-	if !isPrimary {
-		// Backup nodes mount as read-only
-		mountOptions = "ro,noatime"
-	}
-
-	cmd := exec.Command("mount", "-o", mountOptions, device, mountPath)
-	if _, err := cmd.CombinedOutput(); err != nil {
-		return ErrAttachVolume
-	}
-
-	// Record the mounted volume
-	vm.mountedVolumes[volumeID] = &MountedVolume{
-		VolumeID:  volumeID,
-		MountPath: mountPath,
-		Device:    device,
-		IsPrimary: isPrimary,
-		MountTime: time.Now(),
-	}
-
-	// Update metadata
-	// TODO handle not found
-	volumeInfo, err := vm.metadataStore.GetVolume(ctx, volumeID)
-	if err != nil {
-		// If volume doesn't exist in metadata, register it
-		volumeInfo = &metadata.VolumeInfo{
-			VolumeID:    volumeID,
-			NodeID:      vm.nodeID,
-			IsPrimary:   isPrimary,
-			MountPath:   mountPath,
-			BackupNodes: []string{},
-		}
-		if err = vm.metadataStore.RegisterVolume(ctx, volumeInfo); err != nil {
-			return err
-		}
-	} else {
-		// Add this node as a backup node if not primary
-		if !isPrimary {
-			if err := vm.metadataStore.AddBackupNode(ctx, volumeID, vm.nodeID); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-// UnmountVolume unmounts an EBS volume from the node
-func (vm *VolumeManager) UnmountVolume(ctx context.Context, volumeID string, force bool) error {
-	vm.mu.Lock()
-	defer vm.mu.Unlock()
-
-	mounted, exists := vm.mountedVolumes[volumeID]
-	if !exists {
-		return ErrVolumeNotMounted
-	}
-
-	// Unmount the volume
-	cmd := exec.Command("umount", mounted.MountPath)
-	if _, err := cmd.CombinedOutput(); err != nil {
-		if !force {
-			return ErrDetachVolume
-		}
-		// Force unmount
-		cmd = exec.Command("umount", "-f", mounted.MountPath)
-		if _, err := cmd.CombinedOutput(); err != nil {
-			return ErrDetachVolume
-		}
-	}
-
-	// Detach the volume
-	err := vm.provider.DetachVolume(ctx, volumeID, vm.nodeID, force)
-	if err != nil {
-		return ErrDetachVolume
-	}
-
-	// Wait for the volume to be detached
-	if !force {
-		err = vm.provider.WaitForVolumeDetached(ctx, volumeID, vm.nodeID)
-		if err != nil {
-			return ErrDetachVolume
-		}
-	}
-
-	// Remove from mounted volumes
-	delete(vm.mountedVolumes, volumeID)
-
-	// Update metadata
-	if mounted.IsPrimary {
-		// If this was the primary node, we should update the metadata to reflect that
-		// In a real system, a leader election or external controller should handle failover
-	} else {
-		// Remove from backup nodes
-		if err := vm.metadataStore.RemoveBackupNode(ctx, volumeID, vm.nodeID); err != nil {
-			return metadata.ErrMetadata
-		}
-	}
-
-	return nil
-}
-
-// GetMountedVolume returns information about a mounted volume
-func (vm *VolumeManager) GetMountedVolume(volumeID string) (*MountedVolume, error) {
-	vm.mu.RLock()
-	defer vm.mu.RUnlock()
-
-	mounted, exists := vm.mountedVolumes[volumeID]
-	if !exists {
-		return nil, ErrNotMounted
-	}
-
-	return mounted, nil
+	return err
 }
 
 // ListMountedVolumes returns all mounted volumes
 func (vm *VolumeManager) ListMountedVolumes() []*MountedVolume {
 	vm.mu.RLock()
 	defer vm.mu.RUnlock()
+
+	if !vm.started.Load() {
+		return []*MountedVolume{}
+	}
 
 	volumes := make([]*MountedVolume, 0, len(vm.mountedVolumes))
 	for _, v := range vm.mountedVolumes {
@@ -267,9 +149,12 @@ func (vm *VolumeManager) PromoteToPrimary(ctx context.Context, volumeID string) 
 	vm.mu.Lock()
 	defer vm.mu.Unlock()
 
+	if !vm.started.Load() {
+		return ErrVmNotStarted
+	}
 	mounted, exists := vm.mountedVolumes[volumeID]
 	if !exists {
-		return fmt.Errorf("volume %s is not mounted", volumeID)
+		return ErrNotMounted
 	}
 
 	if mounted.IsPrimary {
@@ -278,58 +163,18 @@ func (vm *VolumeManager) PromoteToPrimary(ctx context.Context, volumeID string) 
 
 	// Remount as read-write
 	cmd := exec.Command("mount", "-o", "remount,rw", mounted.MountPath)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to remount volume as read-write: %s, %w", string(output), err)
+	if _, err := cmd.CombinedOutput(); err != nil {
+		return ErrAttachVolume
 	}
 
 	mounted.IsPrimary = true
 
 	// Update metadata
 	if err := vm.metadataStore.UpdateVolumePrimary(ctx, volumeID, vm.nodeID); err != nil {
-		return fmt.Errorf("failed to update volume primary in metadata: %w", err)
+		return err
 	}
 
 	return nil
-}
-
-// waitForDevice waits for a device to appear in the system
-func (vm *VolumeManager) waitForDevice(device string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(device); err == nil {
-			return nil
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	return ErrAttachVolume
-}
-
-// ensureFilesystem checks if a filesystem exists on the device, and creates one if not
-func (vm *VolumeManager) ensureFilesystem(device string) error {
-	// Check if filesystem exists
-	cmd := exec.Command("blkid", device)
-	if err := cmd.Run(); err == nil {
-		// Filesystem exists
-		return nil
-	}
-
-	// Create ext4 filesystem
-	cmd = exec.Command("mkfs.ext4", "-F", device)
-	if _, err := cmd.CombinedOutput(); err != nil {
-		return ErrEnsureFilesystem
-	}
-
-	return nil
-}
-
-// GetVolumeForShard returns the volume ID that contains the given shard
-func (vm *VolumeManager) GetVolumeForShard(ctx context.Context, shardID uint64) (string, error) {
-	shardInfo, err := vm.metadataStore.GetShard(ctx, shardID)
-	if err != nil {
-		return "", err
-	}
-
-	return shardInfo.VolumeID, nil
 }
 
 // GetShardPath returns the filesystem path for a shard
@@ -337,6 +182,9 @@ func (vm *VolumeManager) GetShardPath(volumeID string, shardID uint64) (string, 
 	vm.mu.RLock()
 	defer vm.mu.RUnlock()
 
+	if !vm.started.Load() {
+		return "", ErrVmNotStarted
+	}
 	mounted, exists := vm.mountedVolumes[volumeID]
 	if !exists {
 		return "", ErrVolumeNotMounted
@@ -350,6 +198,9 @@ func (vm *VolumeManager) IsPrimaryForVolume(volumeID string) bool {
 	vm.mu.RLock()
 	defer vm.mu.RUnlock()
 
+	if !vm.started.Load() {
+		return false
+	}
 	mounted, exists := vm.mountedVolumes[volumeID]
 	if !exists {
 		return false

@@ -10,25 +10,14 @@ type ShardInfo struct {
 	ShardID  uint64
 	VolumeID string
 	ClientID string
-	Status   ShardStatus
 }
-
-// ShardStatus represents the status of a shard
-type ShardStatus string
-
-const (
-	ShardStatusActive   ShardStatus = "active"
-	ShardStatusReadOnly ShardStatus = "readonly"
-	ShardStatusDeleted  ShardStatus = "deleted"
-)
 
 // VolumeInfo contains information about a volume
 type VolumeInfo struct {
 	VolumeID    string
-	NodeID      string
-	IsPrimary   bool
+	PrimaryNode string
 	MountPath   string
-	BackupNodes []string
+	Nodes       []string
 }
 
 type NodeInfo struct {
@@ -63,9 +52,6 @@ type MetadataStore interface {
 	// GetShard retrieves shard information by shard ID
 	GetShard(ctx context.Context, shardID uint64) (*ShardInfo, MetadataError)
 
-	// UpdateShardStatus updates the status of a shard
-	UpdateShardStatus(ctx context.Context, shardID uint64, status ShardStatus) MetadataError
-
 	// DeleteShard removes shard metadata
 	DeleteShard(ctx context.Context, shardID uint64) MetadataError
 
@@ -91,4 +77,21 @@ type MetadataStore interface {
 
 	// UnregisterVolume removes volume metadata
 	UnregisterVolume(ctx context.Context, volumeID string) MetadataError
+}
+
+type MetadataChangeListener interface {
+	// OnNodeRegistered When a new node is started
+	OnNodeRegistered(nodeID string)
+	// OnNodeUnregistered When a node is stopped
+	OnNodeUnregistered(nodeID string)
+
+	// OnShardCreated When a new shard is created
+	OnShardCreated(shardID uint64)
+	// OnShardDeleted When a shard is deleted
+	OnShardDeleted(shardID uint64)
+
+	// OnVolumeRegistered When a new volume is registered
+	OnVolumeRegistered(volumeID string)
+	// OnVolumePrimaryUpdated When volume's primary node is updated.
+	OnVolumePrimaryUpdated(volumeID string)
 }

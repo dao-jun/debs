@@ -41,7 +41,6 @@ func NewShard(volumeId string, path string, shardID uint64, clientID string, rea
 	var err error = nil
 	if !readOnly {
 		db, err = pebble.Open(path, &pebble.Options{
-			DisableWAL: true,
 			// Configure Pebble for optimal performance
 			MemTableSize:             64 << 20, // 64 MB
 			MaxConcurrentCompactions: func() int { return 3 },

@@ -63,6 +63,11 @@ func main() {
 		cfg.Node.NodeID,
 	)
 
+	if err = volumeManager.Start(ctx); err != nil {
+		log.Fatalf("Failed to start volume manager: %v", err)
+		return
+	}
+
 	// Initialize shard manager
 	shardManager := shard.NewShardManager(volumeManager, metadataStore)
 

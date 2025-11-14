@@ -108,15 +108,6 @@ func (r *RetryWrapper) GetShard(ctx context.Context, shardID uint64) (*ShardInfo
 	return shardInfo, err
 }
 
-// UpdateShardStatus updates the status of a shard with retry
-func (r *RetryWrapper) UpdateShardStatus(ctx context.Context, shardID uint64, status ShardStatus) MetadataError {
-	operation := func() error {
-		return r.store.UpdateShardStatus(ctx, shardID, status)
-	}
-
-	return backoff.Retry(operation, backoff.WithContext(r.newBackoff(), ctx))
-}
-
 // DeleteShard removes shard metadata with retry
 func (r *RetryWrapper) DeleteShard(ctx context.Context, shardID uint64) MetadataError {
 	operation := func() error {

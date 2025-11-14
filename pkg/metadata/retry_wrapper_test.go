@@ -54,14 +54,6 @@ func (m *TestMockMetadataStore) GetShard(ctx context.Context, shardID uint64) (*
 	return &ShardInfo{ShardID: shardID}, nil
 }
 
-func (m *TestMockMetadataStore) UpdateShardStatus(ctx context.Context, shardID uint64, status ShardStatus) MetadataError {
-	m.currentAttempt++
-	if m.currentAttempt <= m.failCount {
-		return ErrMetadata
-	}
-	return nil
-}
-
 func (m *TestMockMetadataStore) DeleteShard(ctx context.Context, shardID uint64) MetadataError {
 	m.currentAttempt++
 	if m.currentAttempt <= m.failCount {
@@ -187,34 +179,6 @@ func TestRetryWrapperFailure(t *testing.T) {
 	_, err := wrapper.GetShard(ctx, 1)
 	if err == nil {
 		t.Error("GetShard should have failed after max retries")
-	}
-}
-
-func TestRetryWrapperContextCancellation(t *testing.T) {
-	// Test that operations respect context cancellation
-	mock := &TestMockMetadataStore{failCount: 100} // Always fail
-	config := &RetryConfig{
-		MaxElapsedTime:  10 * time.Second,
-		InitialInterval: 100 * time.Millisecond,
-		MaxInterval:     1 * time.Second,
-		Multiplier:      2.0,
-	}
-	wrapper := NewRetryWrapper(mock, config)
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
-	defer cancel()
-
-	// Test UpdateShardStatus - should fail due to context timeout
-	start := time.Now()
-	err := wrapper.UpdateShardStatus(ctx, 1, ShardStatusActive)
-	elapsed := time.Since(start)
-
-	if err == nil {
-		t.Error("UpdateShardStatus should have failed due to context cancellation")
-	}
-
-	// Should fail relatively quickly due to context timeout, not wait for max elapsed time
-	if elapsed > 1*time.Second {
-		t.Errorf("Operation took too long: %v", elapsed)
 	}
 }
 

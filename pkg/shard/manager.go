@@ -148,7 +148,6 @@ func (sm *ShardManager) CreateShard(ctx context.Context, clientID string) (uint6
 		ShardID:  shardID,
 		VolumeID: volumeID,
 		ClientID: clientID,
-		Status:   metadata.ShardStatusActive,
 	}
 
 	if err = sm.metadataStore.CreateShard(ctx, shardInfo); err != nil {
@@ -213,16 +212,8 @@ func (sm *ShardManager) loadShard(ctx context.Context, shardID uint64) (*Shard, 
 		return nil, ErrShardNotFound
 	}
 
-	// Determine if this shard should be read-only
-	readOnly := shardInfo.Status == metadata.ShardStatusReadOnly
-
-	// Check if this node is primary for the volume
-	if !sm.volumeManager.IsPrimaryForVolume(shardInfo.VolumeID) {
-		readOnly = true
-	}
-
 	// Open the shard
-	shard, err := NewShard(shardInfo.VolumeID, shardPath, shardID, shardInfo.ClientID, readOnly)
+	shard, err := NewShard(shardInfo.VolumeID, shardPath, shardID, shardInfo.ClientID, true)
 	if err != nil {
 		return nil, err
 	}
@@ -249,12 +240,6 @@ func (sm *ShardManager) CloseShard(ctx context.Context, shardID uint64) error {
 	if err := shard.Close(); err != nil {
 		return err
 	}
-
-	// Update metadata
-	if err := sm.metadataStore.UpdateShardStatus(ctx, shardID, metadata.ShardStatusReadOnly); err != nil {
-		return metadata.ErrMetadata
-	}
-
 	return nil
 }
 
@@ -294,8 +279,8 @@ func (sm *ShardManager) DeleteShard(ctx context.Context, shardID uint64) error {
 		return ErrIO
 	}
 
-	// Update metadata
-	if err := sm.metadataStore.UpdateShardStatus(ctx, shardID, metadata.ShardStatusDeleted); err != nil {
+	// Delete shard in  metadata
+	if err := sm.metadataStore.DeleteShard(ctx, shardID); err != nil {
 		return metadata.ErrMetadata
 	}
 
